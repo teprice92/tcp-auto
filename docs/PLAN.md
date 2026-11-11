@@ -2,7 +2,10 @@
 
 Automated **Traffic Control Plan (TCP)** drafting from electrical/utility design plans.
 
-> **Status:** Planning. Nothing here is implemented yet.
+> **Status:** v0.1 first vertical slice implemented (see the README status table). This version
+> differs from the plan in a few ways: projects are stored as JSON files rather than PostgreSQL;
+> sign-in is a shared access key for now; the report map is a straightened plan drawing (the editor
+> uses the live OSM map); and the frontend is plain JavaScript with Leaflet rather than React/MapLibre.
 > **Safety note:** TCP-Auto produces *drafts*. Every plan must be reviewed, adjusted, and
 > approved (and stamped where required) by a qualified person, such as a PE or a
 > state-certified TCP/work-zone designer, before it is submitted or used in the field.

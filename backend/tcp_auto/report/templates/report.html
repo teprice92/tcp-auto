@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Traffic Control Plan – {{ d.project_name or d.address or "Draft" }}</title>
+<style>
+  @page { size: letter landscape; margin: 0.45in; }
+  :root { --ink:#1d2430; --muted:#5b6472; --line:#d8dbe0; --orange:#e8650f; --blue:#1d4ed8; --red:#b42318; --bg:#ffffff; }
+  * { box-sizing: border-box; }
+  body { font-family: Arial, Helvetica, sans-serif; color: var(--ink); background: var(--bg); margin: 0; font-size: 10.5px; line-height: 1.35; }
+  .page { page-break-after: always; }
+  .page:last-child { page-break-after: auto; }
+  header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid var(--orange); padding-bottom: 6px; margin-bottom: 8px; }
+  header h1 { font-size: 18px; margin: 0; }
+  header .sub { color: var(--muted); font-size: 11px; }
+  header table { font-size: 10px; border-collapse: collapse; }
+  header td { padding: 1px 6px; }
+  header td:first-child { color: var(--muted); text-align: right; }
+  .draft { color: var(--red); font-weight: bold; font-size: 10px; }
+  .banner { border-radius: 4px; padding: 5px 8px; margin: 6px 0; font-weight: bold; }
+  .banner.police { background: #e8efff; border: 1px solid var(--blue); color: #12307a; }
+  .banner.warn { background: #fff4e5; border: 1px solid var(--orange); color: #7a3300; font-weight: normal; }
+  .map { border: 1px solid var(--line); }
+  .map svg { display:block; width:100%; height:3.55in; }
+  .tl svg { display:block; width:100%; height:auto; max-height:1.1in; }
+  .grid { display: grid; grid-template-columns: 1.25fr 1fr; gap: 14px; margin-top: 4px; }
+  .page1 h2 { margin-top: 4px; }
+  h2 { font-size: 13px; margin: 8px 0 4px; border-bottom: 1px solid var(--line); padding-bottom: 2px; }
+  p { margin: 0 0 6px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 10px; font-size: 10px; color: var(--muted); margin-top: 4px; }
+  .legend span { display: inline-flex; align-items: center; gap: 4px; }
+  .sw { display: inline-block; width: 10px; height: 10px; }
+  table.t { width: 100%; border-collapse: collapse; font-size: 10px; }
+  table.t th, table.t td { border-bottom: 1px solid var(--line); padding: 3px 4px; text-align: left; vertical-align: top; }
+  table.t th { background: #f3f4f6; }
+  .muted { color: var(--muted); }
+  .sev-error { color: var(--red); font-weight: bold; }
+  .sev-warning { color: #9a4a00; }
+  .tag { display: inline-block; font-size: 9px; padding: 0 4px; border-radius: 3px; background: #fde68a; color: #6b4b00; }
+  .cols3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
+  footer { margin-top: 8px; font-size: 9px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 4px; }
+</style>
+</head>
+<body>
+
+<section class="page page1">
+  <header>
+    <div>
+      <h1>Traffic Control Plan</h1>
+      <div class="sub">{{ d.utility_name }} · {{ d.project_name or "Utility work" }} · {{ road.name }}{% if d.city %}, {{ d.city }}{% endif %}, AZ</div>
+      <div class="draft">DRAFT – requires review and approval by qualified personnel before use.</div>
+    </div>
+    <table>
+      <tr><td>Job #</td><td>{{ d.job_number or "—" }}</td><td>Permit #</td><td>{{ d.permit_number or "—" }}</td></tr>
+      <tr><td>Location</td><td colspan="3">{{ d.address or road.name }}</td></tr>
+      <tr><td>Road owner</td><td>{{ owner_label }}</td><td>Template</td><td>{{ template_label }}</td></tr>
+      <tr><td>Prepared by</td><td>{{ d.contacts.preparer or "—" }}</td><td>Date</td><td>{{ today }}</td></tr>
+    </table>
+  </header>
+
+  {% for r in police_required %}
+  <div class="banner police">Police officer required – {{ r.text }}{% if not r.verified %} <span class="tag">confirm with agency</span>{% endif %}</div>
+  {% endfor %}
+  {% for i in top_errors %}
+  <div class="banner warn">⚠ {{ i.message }}</div>
+  {% endfor %}
+
+  <div class="map">{{ map_svg | safe }}</div>
+  <div class="legend">
+    <span><i class="sw" style="background:#f36f21;border-radius:50%"></i>Cone</span>
+    <span><i class="sw" style="background:#f36f21"></i>Drum</span>
+    <span><i class="sw" style="background:#f36f21;transform:rotate(45deg)"></i>Sign (code shown)</span>
+    <span><i class="sw" style="background:#111"></i>Arrow board</span>
+    <span><i class="sw" style="background:#d62828;border-radius:50%"></i>Flagger</span>
+    <span><i class="sw" style="background:#1d4ed8;border-radius:50%"></i>Police officer</span>
+    <span><i class="sw" style="background:repeating-linear-gradient(45deg,#f07c1b 0 3px,#fde3c4 3px 6px)"></i>Work area</span>
+    <span><i class="sw" style="background:#ffd60a"></i>Light tower</span>
+  </div>
+
+  <div class="grid">
+    <div>
+      <h2>What is happening</h2>
+      {% for para in explanation %}<p>{{ para }}</p>{% endfor %}
+    </div>
+    <div>
+      <h2>Timeline</h2>
+      {% if phases %}
+        <div class="tl">{{ timeline_svg | safe }}</div>
+        <table class="t">
+          <tr><th>Phase</th><th>Dates</th><th>Hours</th><th>Days</th></tr>
+          {% for p in phases %}
+          <tr><td>{{ p.name }}</td><td>{{ p.start_date.strftime("%b %d") }} – {{ p.end_date.strftime("%b %d, %Y") }}</td>
+              <td>{{ p.start_time.strftime("%H:%M") }}–{{ p.end_time.strftime("%H:%M") }}{% if p.name in night_phases %} (night){% endif %}</td>
+              <td>{{ p.days | map("dayname") | join(", ") }}</td></tr>
+          {% endfor %}
+        </table>
+        {% if sun %}<div class="muted">Sunrise {{ sun.sunrise }} / sunset {{ sun.sunset }} (Arizona time).</div>{% endif %}
+      {% else %}
+        <p class="muted">No timeline entered.</p>
+      {% endif %}
+      <h2>Contacts</h2>
+      <table class="t">
+        <tr><td>Field supervisor</td><td>{{ d.contacts.field_supervisor or "—" }} {{ d.contacts.field_supervisor_phone }}</td></tr>
+        <tr><td>24-hour emergency</td><td>{{ d.contacts.emergency_contact or "—" }} {{ d.contacts.emergency_phone }}</td></tr>
+        <tr><td>Traffic control company</td><td>{{ d.contacts.traffic_control_company or "—" }}</td></tr>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section class="page">
+  <header>
+    <div><h1>Plan details</h1><div class="sub">{{ road.name }}{% if d.city %}, {{ d.city }}{% endif %} · Job {{ d.job_number or "—" }}</div></div>
+    <div class="draft">DRAFT</div>
+  </header>
+  <div class="cols3">
+    <div>
+      <h2>Key dimensions</h2>
+      <table class="t">
+        <tr><td>Posted speed</td><td>{{ dims.speed_mph }} mph{% if not road.speed_confirmed %} <span class="tag">not confirmed</span>{% endif %}</td></tr>
+        <tr><td>Work area</td><td>{{ dims.work_area_ft | round | int }} ft (min. 250 ft)</td></tr>
+        <tr><td>Buffer space</td><td>{{ dims.buffer_ft | round | int }} ft</td></tr>
+        <tr><td>Taper</td><td>{{ dims.taper_ft | round | int }} ft – {{ dims.taper_type }}</td></tr>
+        <tr><td>Downstream taper</td><td>{{ dims.downstream_taper_ft | round | int }} ft</td></tr>
+        <tr><td>Sign spacing A / B / C</td><td>{{ dims.sign_spacing_ft.A | int }} / {{ dims.sign_spacing_ft.B | int }} / {{ dims.sign_spacing_ft.C | int }} ft</td></tr>
+        <tr><td>Device spacing</td><td>{{ dims.taper_spacing_ft | int }} ft taper / {{ dims.tangent_spacing_ft | int }} ft tangent</td></tr>
+        <tr><td>Lanes</td><td>{{ road.lanes_forward }} + {{ road.lanes_backward }} × {{ road.lane_width_ft | int }} ft{% if road.one_way %} (one-way){% endif %}</td></tr>
+      </table>
+      <h2>Device quantities</h2>
+      <table class="t">
+        {% for k, v in counts.items() %}<tr><td>{{ k }}</td><td>{{ v }}</td></tr>{% endfor %}
+      </table>
+    </div>
+    <div>
+      <h2>Requirements &amp; checklist</h2>
+      <table class="t">
+        {% for r in requirements %}
+        <tr><td>{% if r.required %}☐{% else %}?{% endif %}</td>
+            <td>{{ r.text }}{% if not r.required %} <span class="muted">(may be required)</span>{% endif %}{% if not r.verified %} <span class="tag">confirm with agency</span>{% endif %}
+            {% if r.citation %}<div class="muted">{{ r.citation }}</div>{% endif %}</td></tr>
+        {% endfor %}
+        {% for c in checklist %}<tr><td>☐</td><td>{{ c }}</td></tr>{% endfor %}
+      </table>
+    </div>
+    <div>
+      <h2>Review notes</h2>
+      {% if issues %}
+      <table class="t">
+        {% for i in issues %}<tr><td class="sev-{{ i.severity }}">{{ i.severity }}</td><td>{{ i.message }}{% if i.rule_ref %}<div class="muted">{{ i.rule_ref }}</div>{% endif %}</td></tr>{% endfor %}
+      </table>
+      {% else %}<p class="muted">No issues found by the automated checks.</p>{% endif %}
+      <h2>Rules applied</h2>
+      <table class="t">
+        {% for layer in rules_chain %}<tr><td>{{ layer }}</td></tr>{% endfor %}
+      </table>
+      {% if d.notes %}<h2>Notes</h2><p>{{ d.notes }}</p>{% endif %}
+      <h2>Approval</h2>
+      <table class="t">
+        <tr><td style="height:26px">Prepared by</td><td></td></tr>
+        <tr><td style="height:26px">Reviewed by</td><td></td></tr>
+        <tr><td style="height:26px">Agency approval</td><td></td></tr>
+      </table>
+    </div>
+  </div>
+  <footer>Generated by TCP-Auto {{ version }} on {{ today }}. This is a draft prepared from the design drawing, map data, and the encoded rules listed above. Verify field conditions, posted speed, and agency requirements before submittal. Map data © OpenStreetMap contributors where used.</footer>
+</section>
+</body>
+</html>

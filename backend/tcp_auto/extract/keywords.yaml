@@ -1,0 +1,39 @@
+# Keyword list for finding work items on design drawings (v1).
+# Admins can edit this file when real drawings show other wording.
+# Patterns are case-insensitive regular expressions matched against each text line.
+
+construct:
+  - '\bCONSTRUCT(ION)?\b'
+  - '\bCONSTR\b\.?'
+  - '\bCONST\b\.?'
+  - '\bCNST\b\.?'
+  - '\bINSTALL\b'
+  - '\bINST\b\.?'
+
+remove:
+  - '\bREMOVE\b'
+  - '\bREMOVAL\b'
+  - '\bRMV\b\.?'
+  - '\bRMVL\b\.?'
+  - '\bREM\b\.'      # "REM." only; bare "REM" is too ambiguous
+
+# Device words found in the same label (used only for wording in the report).
+device_types:
+  pole: '\bPOLES?\b|\bPOLE\b'
+  transformer: '\bTRANSFORMERS?\b|\bXFMR\b|\bTRANS\b'
+  switch: '\bSWITCH(ES)?\b|\bSW\b'
+  streetlight: '\bSTREET\s*LIGHTS?\b|\bSTREETLIGHT\b|\bLUMINAIRE\b'
+  guy_anchor: '\bGUY\b|\bANCHOR\b'
+  conductor: '\bCONDUCTORS?\b|\bWIRE\b|\bPRIMARY\b|\bSECONDARY\b|\bSPAN\b'
+  vault: '\bVAULT\b|\bHANDHOLE\b|\bJ-?BOX\b|\bPULL\s*BOX\b'
+  riser: '\bRISER\b'
+  conduit: '\bCONDUIT\b|\bDUCT\b'
+  cabinet: '\bCABINET\b|\bPAD\s*MOUNT\b|\bPADMOUNT\b'
+
+# Lines that look like keywords but are general notes, not work items.
+ignore_if_matches:
+  - '\bSHALL\b'
+  - '\bALL\s+REMOVED\b'
+  - '\bCONTRACTOR\b'
+  - '\bRESPONSIBLE\b'
+  - '\bPRIOR\s+TO\b'
