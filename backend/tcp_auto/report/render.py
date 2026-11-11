@@ -15,6 +15,7 @@ from ..models import Project
 from ..pipeline import timeline_for
 from ..rules.engine import resolve
 from .narrative import explain
+from .pdf import html_to_pdf  # noqa: F401  (re-exported)
 from .svgmap import render_plan_svg, render_timeline_svg
 
 TEMPLATES = Path(__file__).with_name("templates")
@@ -103,16 +104,6 @@ def standards(rules) -> list[str]:
     return out
 
 
-def _launch(p):
-    try:
-        return p.chromium.launch()
-    except Exception:
-        exe = os.environ.get("TCP_CHROMIUM") or next(iter(sorted(glob.glob("/opt/pw-browsers/chromium-*/chrome-linux*/chrome"))), None)
-        if not exe:
-            raise
-        return p.chromium.launch(executable_path=exe, args=["--no-sandbox"])
-
-
 def render_checklist_html(project: Project) -> str:
     from .checklist import build_checklist
 
@@ -126,19 +117,6 @@ def render_checklist_html(project: Project) -> str:
 
 def render_checklist_pdf(project: Project) -> bytes:
     return html_to_pdf(render_checklist_html(project), landscape=False)
-
-
-def html_to_pdf(html: str, landscape: bool = True) -> bytes:
-    from playwright.sync_api import sync_playwright
-
-    with sync_playwright() as p:
-        browser = _launch(p)
-        try:
-            page = browser.new_page()
-            page.set_content(html, wait_until="load")
-            return page.pdf(format="Letter", landscape=landscape, print_background=True, prefer_css_page_size=True)
-        finally:
-            browser.close()
 
 
 def render_pdf(project: Project) -> bytes:

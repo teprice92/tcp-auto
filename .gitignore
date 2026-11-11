@@ -8,3 +8,7 @@ samples/out/
 *.egg-info/
 backend/build/
 backend/dist/
+/build/
+/dist/
+/dist-onefile/
+.build-venv/

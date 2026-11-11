@@ -6,7 +6,7 @@ COPY backend/ backend/
 COPY frontend/ frontend/
 COPY rules/ rules/
 
-RUN pip install --no-cache-dir ./backend \
+RUN pip install --no-cache-dir "./backend[playwright]" \
  && python -m playwright install --with-deps chromium
 
 ENV TCP_DATA_DIR=/data \

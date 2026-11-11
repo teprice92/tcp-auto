@@ -16,12 +16,16 @@ dependencies = [
   "pydantic>=2.6",
   "python-multipart>=0.0.9",
   "httpx>=0.27",
-  "playwright>=1.44",
   "anthropic>=2.8",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8"]
+# Optional PDF engine for servers/Docker; desktop builds use the installed Edge/Chrome instead.
+playwright = ["playwright>=1.44"]
+dev = ["pytest>=8", "playwright>=1.44"]
+
+[project.scripts]
+flagpole = "tcp_auto.launcher:main"
 
 [tool.setuptools.packages.find]
 include = ["tcp_auto*"]

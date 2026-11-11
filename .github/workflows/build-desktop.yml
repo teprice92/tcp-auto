@@ -1,0 +1,51 @@
+name: Build desktop app
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            name: windows
+          - os: ubuntu-22.04   # older glibc so the binary runs on more Linux distros
+            name: linux
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install ./backend[dev] pyinstaller
+      - name: Test
+        run: python -m pytest -q -k "not pdf_render"
+        working-directory: backend
+      - name: Build folder app
+        run: pyinstaller --noconfirm flagpole.spec
+      - name: Build single-file app
+        shell: bash
+        run: FLAGPOLE_ONEFILE=1 pyinstaller --noconfirm --distpath dist-onefile flagpole.spec
+      - name: Smoke test
+        shell: bash
+        run: |
+          if [ "${{ matrix.name }}" = "windows" ]; then ./dist/FlagPole/FlagPole.exe --version; else ./dist/FlagPole/FlagPole --version; fi
+      - name: Package
+        shell: bash
+        run: |
+          cd dist
+          if [ "${{ matrix.name }}" = "windows" ]; then 7z a ../FlagPole-windows.zip FlagPole >/dev/null; else tar -czf ../FlagPole-linux.tar.gz FlagPole; fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FlagPole-${{ matrix.name }}
+          path: |
+            FlagPole-*.zip
+            FlagPole-*.tar.gz
+            dist-onefile/*

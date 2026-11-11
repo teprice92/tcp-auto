@@ -44,14 +44,38 @@ explanation, timeline) or an Outlook email draft to send to the city or county.
   This is an original palette in the spirit of Arizona utilities' blues. It doesn't copy any company's branding.
 - Design tokens live at the top of `frontend/style.css`. The report uses the same palette (`backend/tcp_auto/report/templates/report.html`).
 
-## Run locally
+## Desktop app (Windows / Linux)
+
+FlagPole can be packaged as a desktop app with PyInstaller. Double-click it and it starts on your
+computer and opens in your browser.
+
+**Using it**
+- **Windows:** unzip `FlagPole-windows.zip` and run `FlagPole\FlagPole.exe`, or run the single-file `FlagPole.exe`.
+- **Linux:** `tar -xzf FlagPole-linux.tar.gz && ./FlagPole/FlagPole`, or run the single-file `FlagPole`.
+- A console window shows the address (default `http://localhost:8765/`). Closing it stops FlagPole.
+- Projects, drawings and accepted rules are saved per user: `%APPDATA%\FlagPole` on Windows, `~/.local/share/flagpole` on Linux.
+- PDF export uses the computer's **Microsoft Edge** (always on Windows) or **Google Chrome/Chromium**. If neither is found, use Preview and your browser's Print → Save as PDF, or set `TCP_CHROMIUM` to the browser's path.
+- Options: `FlagPole --port 9000`, `--no-browser`, `--data-dir D:\FlagPoleData`, and `--host 0.0.0.0` to share on the office network. If you share it, set `TCP_ACCESS_KEY` too.
+
+**Building it** (build on the OS you want the app for; PyInstaller doesn't cross-compile)
+
+| | Folder build (faster start) | Single file |
+|---|---|---|
+| Windows (PowerShell) | `powershell -ExecutionPolicy Bypass -File packaging\build.ps1` → `dist\FlagPole\FlagPole.exe` + zip | `... build.ps1 -OneFile` → `dist\FlagPole.exe` |
+| Linux | `packaging/build.sh` → `dist/FlagPole/FlagPole` + tar.gz | `ONEFILE=1 packaging/build.sh` → `dist/FlagPole` |
+| Manually | `pip install ./backend pyinstaller && pyinstaller flagpole.spec` | `FLAGPOLE_ONEFILE=1 pyinstaller flagpole.spec` |
+
+Or run the **Build desktop app** GitHub Action (`.github/workflows/build-desktop.yml`), either manually or by pushing a `v*` tag. It builds both platforms and attaches the files as artifacts.
+
+The spec (`flagpole.spec`) bundles the frontend, rules, report templates and Python dependencies. It leaves out Playwright and PyMuPDF's optional AI layout model to keep the app small: on Linux about 130 MB for the folder build and about 60 MB for the single file.
+
+## Run from source
 
 ```bash
 python3 -m venv .venv && . .venv/bin/activate
 pip install -e "backend[dev]"
-python -m playwright install chromium      # for PDF reports (skip if Chromium is already available)
-cd backend && uvicorn tcp_auto.api.app:app --reload
-# open http://localhost:8000
+flagpole                       # same launcher as the desktop app (or: python -m tcp_auto)
+# developers: cd backend && uvicorn tcp_auto.api.app:app --reload   (data in backend/data)
 ```
 
 Try it with the synthetic sample drawing in `samples/sample_drawing.pdf` (regenerate it with
@@ -74,12 +98,13 @@ cd backend && python -m pytest -q
 
 | Variable | Purpose | Default |
 |---|---|---|
-| `TCP_DATA_DIR` | Where projects and drawings are stored | `backend/data` |
+| `TCP_DATA_DIR` | Where projects, drawings, and accepted rules are stored | desktop app: per-user folder; `uvicorn` dev: `backend/data` |
 | `TCP_RULES_DIR` | Jurisdiction rule files | `rules/` |
 | `TCP_ACCESS_KEY` | If set, users need `/?key=<value>` once (cookie) to use the app | unset (open) |
 | `TCP_TILE_URL` / `TCP_TILE_ATTRIBUTION` | Map tiles. Use a hosted provider in production (OSM's public tiles don't allow heavy use) | OSM standard tiles |
 | `TCP_OVERPASS_URL`, `TCP_NOMINATIM_URL` | Map data services | public OSM endpoints |
-| `TCP_CHROMIUM` | Path to a Chromium binary for PDF rendering, if Playwright's isn't installed | auto |
+| `TCP_CHROMIUM` | Path to Chrome/Edge/Chromium for PDF export | auto-detected |
+| `TCP_PDF_ENGINE` | `auto` (Playwright, then installed browser) or `browser` (installed browser only) | `auto` |
 | `ANTHROPIC_API_KEY` | Claude API key for AI rule drafting (or save one in Rules → AI settings) | unset |
 | `TCP_LLM_MODEL` | Model for rule drafting | `claude-opus-5-5` |
 
