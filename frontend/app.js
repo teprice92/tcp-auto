@@ -14,6 +14,8 @@ const state = {
 };
 
 // ---------------------------------------------------------------- API
+// Links that aren't fetch() calls (images, previews, downloads). The static online demo maps these to files.
+const link = (path) => (typeof window.FP_LINK === "function" ? window.FP_LINK(path) : path);
 async function api(path, opts = {}) {
   const init = { headers: {}, ...opts };
   if (opts.json !== undefined) {
@@ -314,7 +316,7 @@ function renderDrawing() {
   wrap.classList.remove("hidden");
   const img = $("#sheetImg");
   const src = `/api/projects/${p.id}/drawing/page/${page.page}.png?v=${encodeURIComponent(p.updated_at)}`;
-  if (img.dataset.src !== src) { img.src = src; img.dataset.src = src; }
+  if (img.dataset.src !== src) { img.src = link(src); img.dataset.src = src; }
   const dots = $("#sheetDots"); dots.innerHTML = "";
   ex.items.filter(i => i.page === page.page).forEach(i => {
     const d = document.createElement("div");
@@ -547,11 +549,11 @@ async function init() {
     if ((e.key === "Delete" || e.key === "Backspace") && state.selected && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) $("#deleteDevice").click();
   });
 
-  $("#previewReport").onclick = () => window.open(`/api/projects/${state.project.id}/report.html`, "_blank");
-  $("#pdfReport").onclick = () => { window.location = `/api/projects/${state.project.id}/report.pdf`; };
-  $("#previewChecklist").onclick = () => window.open(`/api/projects/${state.project.id}/checklist.html`, "_blank");
-  $("#pdfChecklist").onclick = () => { window.location = `/api/projects/${state.project.id}/checklist.pdf`; };
-  $("#emlReport").onclick = () => { const to = $("#emailTo").value.trim(); window.location = `/api/projects/${state.project.id}/email.eml${to ? "?to=" + encodeURIComponent(to) : ""}`; };
+  $("#previewReport").onclick = () => window.open(link(`/api/projects/${state.project.id}/report.html`), "_blank");
+  $("#pdfReport").onclick = () => { window.location = link(`/api/projects/${state.project.id}/report.pdf`); };
+  $("#previewChecklist").onclick = () => window.open(link(`/api/projects/${state.project.id}/checklist.html`), "_blank");
+  $("#pdfChecklist").onclick = () => { window.location = link(`/api/projects/${state.project.id}/checklist.pdf`); };
+  $("#emlReport").onclick = () => { const to = $("#emailTo").value.trim(); window.location = link(`/api/projects/${state.project.id}/email.eml${to ? "?to=" + encodeURIComponent(to) : ""}`); };
 }
 
 // Accordion: opening one step closes the others

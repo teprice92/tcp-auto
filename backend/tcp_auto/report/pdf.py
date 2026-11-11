@@ -84,8 +84,11 @@ def _playwright_pdf(html: str, landscape: bool) -> bytes:
 
 def _cli_pdf(html: str) -> bytes:
     browsers = _candidates()
-    if os.environ.get("TCP_CHROMIUM"):
-        browsers = browsers[:1]
+    override = os.environ.get("TCP_CHROMIUM")
+    if override:
+        if not os.path.exists(override):
+            raise PdfUnavailable(f"TCP_CHROMIUM points to '{override}', which doesn't exist.")
+        browsers = [override]
     else:  # headless-shell builds first: they're made for printing
         browsers = sorted(browsers, key=lambda b: "headless-shell" not in os.path.basename(b))
     if not browsers:
