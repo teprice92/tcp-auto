@@ -23,7 +23,7 @@ def _esc(s: str) -> str:
 
 
 def render_plan_svg(plan: TcpPlan, road: RoadContext, details: ProjectDetails) -> str:
-    cl = Centerline(road.centerline)
+    cl = Centerline.for_road(road)
     for dv in plan.devices:
         dv.station_ft, dv.offset_ft = (round(v, 1) for v in cl.project(LatLon(lat=dv.lat, lon=dv.lon)))
     stations = [dv.station_ft for dv in plan.devices] + [plan.dimensions.work_start_station_ft, plan.dimensions.work_end_station_ft]

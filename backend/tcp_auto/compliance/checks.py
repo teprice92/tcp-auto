@@ -19,7 +19,7 @@ def _stations(plan: TcpPlan, cl: Centerline) -> None:
 
 
 def check(plan: TcpPlan, road: RoadContext) -> list[ComplianceIssue]:
-    cl = Centerline(road.centerline)
+    cl = Centerline.for_road(road)
     _stations(plan, cl)
     dims = plan.dimensions
     d = 1 if dims.work_end_station_ft >= dims.work_start_station_ft else -1

@@ -105,3 +105,34 @@ def test_shortened_taper_is_flagged(make_project):
     far.lon = near.lon - 0.0003  # ~90 ft taper
     issues = check(p.plan, p.road)
     assert any("Taper is" in i.message for i in issues)
+
+
+def test_divided_road_follows_carriageway(make_project):
+    """Around a median, lanes (and the closure) are pushed out to the carriageway, and project() undoes it."""
+    from tcp_auto.geo import Centerline
+    from tcp_auto.models import LatLon, MedianPoint
+
+    median = [MedianPoint(station_ft=0, width_ft=0), MedianPoint(station_ft=1500, width_ft=0),
+              MedianPoint(station_ft=1700, width_ft=40), MedianPoint(station_ft=4560, width_ft=40)]
+    p = make_project(road_kw=dict(median=median, divided=True))
+    cl = Centerline.for_road(p.road)
+    assert cl.median_half(1000) == 0 and cl.median_half(1600) == 10 and cl.median_half(3000) == 20
+    # a point 30 ft right of center lands 50 ft out where the median is 40 ft wide
+    x0, y0 = cl.point_xy(3000, 0)
+    x1, y1 = cl.point_xy(3000, -30)
+    assert abs(((x1 - x0) ** 2 + (y1 - y0) ** 2) ** 0.5 - 50) < 0.5
+    s, off = cl.project(cl.point(3000, -30))
+    assert abs(s - 3000) < 0.5 and abs(off + 30) < 0.5
+
+    plain, _, _ = build_plan(make_project())
+    divided, _, _ = build_plan(p)
+    assert divided.template == plain.template == "lane_closure_multilane"
+    assert len([z for z in divided.zones if z.kind == "roadway"]) == 2  # one per carriageway
+    # cones in the median section sit farther from the centerline than on the undivided road
+    def dist(c, d):  # distance from the centerline, median included
+        s, off = c.project(LatLon(lat=d.lat, lon=d.lon))
+        return abs(off) + c.median_half(s)
+
+    def max_off(plan):
+        return max(dist(cl, d) for d in plan.devices if d.type == DeviceType.cone)
+    assert max_off(divided) > max_off(plain) + 15

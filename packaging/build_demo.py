@@ -45,8 +45,13 @@ def road(key: str, **attrs) -> dict:
     cl = Centerline([LatLon(**p) for p in r["centerline"]])
     ints = [{"station_ft": round(cl.project(LatLon(**i["at"]))[0], 1), "cross_street": i["cross_street"], "signalized": i["signalized"]}
             for i in r["intersections"]]
+    # Median width = distance between carriageway centers minus half of each side's lanes
+    lane_w = attrs.get("lane_width_ft", 12.0)
+    half_lanes = (attrs.get("lanes_forward", 1) + attrs.get("lanes_backward", 1)) * lane_w / 2
+    median = [{"station_ft": m["station_ft"], "width_ft": round(max(0.0, m["separation_ft"] - half_lanes), 1) if m["separation_ft"] else 0.0}
+              for m in r.get("carriageway_separation", [])]
     return {"name": r["name"], "centerline": r["centerline"], "intersections": ints, "speed_confirmed": True,
-            "sources": {"centerline": "osm"}, **attrs}
+            "median": median, "divided": any(m["width_ft"] > 0 for m in median), "sources": {"centerline": "osm"}, **attrs}
 
 
 def along(key: str, cross_street: str, meters: float) -> dict:

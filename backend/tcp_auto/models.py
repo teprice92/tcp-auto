@@ -106,6 +106,13 @@ class Valued(BaseModel):
     source: Literal["drawing", "osm", "rule_default", "user", "none"] = "none"
 
 
+class MedianPoint(BaseModel):
+    """Median width at a station (divided roads). Width is between the inner edges of the two carriageways."""
+
+    station_ft: float
+    width_ft: float
+
+
 class RoadContext(BaseModel):
     name: str = ""
     centerline: list[LatLon]  # ordered; "forward" = direction of increasing station
@@ -120,6 +127,7 @@ class RoadContext(BaseModel):
     has_bike_lane: bool = False
     has_sidewalk: bool = True
     intersections: list[Intersection] = Field(default_factory=list)
+    median: list[MedianPoint] = Field(default_factory=list)  # empty = no median
     sources: dict[str, str] = Field(default_factory=dict)
 
 

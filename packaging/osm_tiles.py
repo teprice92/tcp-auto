@@ -155,3 +155,99 @@ def cross_road(cache: TileCache, lat: float, lon: float, orientation: str, color
 def cross_road_line(cache: TileCache, lat: float, lon: float, color, length_m: float = 300):
     """A crossing N-S road near (lat, lon), traced and fitted (samples avoid the main road itself)."""
     return trace_road(cache, lat, lon, "ns", length_m, color, step_m=30)
+
+
+def _runs(flags: list[bool]) -> list[tuple[int, int]]:
+    runs, start = [], None
+    for i, f in enumerate(flags + [False]):
+        if f and start is None:
+            start = i
+        elif not f and start is not None:
+            runs.append((start, i - 1))
+            start = None
+    return runs
+
+
+def carriageway_profile(cache: TileCache, line, color, step_m: float = 12.0, search_px: int = 90, min_gap_px: int = 3):
+    """Walk along a fitted E-W centerline and measure how far apart the two directions' carriageways are.
+
+    Returns [(lon, center_lat, carriageway_separation_m)] per sample (0 = one undivided road). Dark pixels
+    (street-name lettering) count as road so labels don't look like medians. Two cases mean a median:
+      * two road bands with a gap of other colors between them, and
+      * one band clearly wider than a single carriageway: where a road starts to split (or has a narrow
+        median / turn bay) the map draws both carriageways overlapping as one wide band.
+    Map styles draw roads wider than real life, so band *centers* are reliable but band edges are not."""
+    (lat0, lon0), (lat1, lon1) = line
+    x0, y0 = lonlat_to_px(lat0, lon0)
+    x1, y1 = lonlat_to_px(lat1, lon1)
+    m_per_px = 156543.03392 * math.cos(math.radians(lat0)) / 2 ** Z
+    n = max(1, int(math.hypot(x1 - x0, y1 - y0) * m_per_px / step_m))
+    samples = []
+    for k in range(n + 1):
+        x = x0 + (x1 - x0) * k / n
+        yc = y0 + (y1 - y0) * k / n
+        flags = []
+        for t in range(-search_px, search_px + 1):
+            c = cache.pixel(x, yc + t)
+            flags.append(_match(c, color) or sum(c) < 3 * 110)
+        runs = []
+        for r in _runs(flags):  # a 1-2 px break (anti-aliased label edge) doesn't split a band
+            if runs and r[0] - runs[-1][1] - 1 < min_gap_px:
+                runs[-1] = (runs[-1][0], r[1])
+            else:
+                runs.append(r)
+        runs = [r for r in runs if r[1] - r[0] + 1 >= 4]
+        if not runs:
+            continue
+        # keep the band(s) nearest the fitted line: the closest run, plus a partner across a gap
+        mid = search_px
+        runs.sort(key=lambda r: min(abs(r[0] - mid), abs(r[1] - mid)) if not (r[0] <= mid <= r[1]) else 0)
+        first = runs[0]
+        partner = None
+        for r in runs[1:]:
+            gap = (r[0] - first[1] - 1) if r[0] > first[1] else (first[0] - r[1] - 1)
+            if min_gap_px <= gap <= 70 and (r[1] - r[0]) >= 0.4 * (first[1] - first[0]):
+                partner = r
+                break
+        samples.append((x, yc, first, partner))
+    if not samples:
+        return []
+    # Width of a single carriageway's band: the typical width of lone bands (lower quartile ignores wide ones)
+    widths = sorted(f[1] - f[0] + 1 for _, _, f, p in samples if p is None) or sorted(f[1] - f[0] + 1 for _, _, f, _ in samples)
+    single = widths[len(widths) // 4]
+    out = []
+    for x, yc, first, partner in samples:
+        if partner:
+            c1, c2 = (first[0] + first[1]) / 2, (partner[0] + partner[1]) / 2
+            mid_px, sep_px = (c1 + c2) / 2, abs(c2 - c1)
+        else:
+            w = first[1] - first[0] + 1
+            mid_px = (first[0] + first[1]) / 2
+            if w > 3 * single:  # a same-colored cross street or plaza, not a median: skip the sample
+                continue
+            # carriageway centers sit half a single band in from each edge
+            sep_px = (w - single) if w > 1.3 * single else 0.0
+        lat_c, lon_c = px_to_lonlat(x, yc - search_px + mid_px)
+        out.append((lon_c, lat_c, sep_px * m_per_px))
+    return out
+
+
+def median_profile(cache: TileCache, line, color, tol_ft: float = 4.0) -> list[dict]:
+    """carriageway_profile as a compact list of {station_ft, separation_ft} along `line` (station 0 at line[0])."""
+    (lat0, lon0), (lat1, lon1) = line
+    span = lon1 - lon0
+    length_ft = math.dist(*(lonlat_to_px(lat, lon) for lat, lon in line)) * 156543.03392 * math.cos(math.radians(lat0)) / 2 ** Z * 3.28084
+    raw = [(round((lon - lon0) / span * length_ft), round(sep * 3.28084, 1)) for lon, _, sep in carriageway_profile(cache, line, color)]
+    # running median over 5 samples (~60 m): removes short blips (labels, driveways, turn-bay paint) and jitter
+    vals = []
+    for i in range(len(raw)):
+        win = sorted(v for _, v in raw[max(0, i - 2):i + 3])
+        vals.append(win[len(win) // 2])
+    # then keep only the points where the value changes
+    out = []
+    for i, ((st, _), v) in enumerate(zip(raw, vals)):
+        prev = out[-1]["separation_ft"] if out else None
+        nxt = vals[i + 1] if i + 1 < len(vals) else None
+        if prev is None or nxt is None or abs(v - prev) > tol_ft or (v > 0) != (prev > 0) or (v > 0) != (nxt > 0):
+            out.append({"station_ft": st, "separation_ft": v})
+    return out

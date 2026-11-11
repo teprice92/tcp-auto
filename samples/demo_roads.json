@@ -1,5 +1,5 @@
 {
- "_about": "Road centerlines for the online demo, measured from OpenStreetMap map tiles (packaging/osm_tiles.py) because the OSM data API wasn't reachable from the build machine. Map data (c) OpenStreetMap contributors, ODbL.",
+ "_about": "Road centerlines for the online demo, measured from OpenStreetMap map tiles (packaging/osm_tiles.py) because the OSM data API wasn't reachable from the build machine. Map data (c) OpenStreetMap contributors, ODbL. carriageway_separation: distance between the centers of a divided road's two carriageways (0 = undivided), measured the same way; the demo build turns it into a median width for each scenario's lane layout.",
  "university_dr_tempe": {
   "name": "E University Dr",
   "centerline": [
@@ -20,6 +20,48 @@
      "lat": 33.422013,
      "lon": -111.926311
     }
+   }
+  ],
+  "carriageway_separation": [
+   {
+    "station_ft": 0,
+    "separation_ft": 0.0
+   },
+   {
+    "station_ft": 394,
+    "separation_ft": 0.0
+   },
+   {
+    "station_ft": 433,
+    "separation_ft": 27.8
+   },
+   {
+    "station_ft": 551,
+    "separation_ft": 32.7
+   },
+   {
+    "station_ft": 787,
+    "separation_ft": 36.8
+   },
+   {
+    "station_ft": 1142,
+    "separation_ft": 31.1
+   },
+   {
+    "station_ft": 1260,
+    "separation_ft": 37.6
+   },
+   {
+    "station_ft": 1457,
+    "separation_ft": 9.8
+   },
+   {
+    "station_ft": 1496,
+    "separation_ft": 0.0
+   },
+   {
+    "station_ft": 5906,
+    "separation_ft": 0.0
    }
   ]
  },
@@ -43,6 +85,56 @@
      "lat": 33.364469,
      "lon": -111.789854
     }
+   }
+  ],
+  "carriageway_separation": [
+   {
+    "station_ft": 0,
+    "separation_ft": 0.0
+   },
+   {
+    "station_ft": 2126,
+    "separation_ft": 0.0
+   },
+   {
+    "station_ft": 2165,
+    "separation_ft": 24.5
+   },
+   {
+    "station_ft": 2205,
+    "separation_ft": 41.7
+   },
+   {
+    "station_ft": 2283,
+    "separation_ft": 50.7
+   },
+   {
+    "station_ft": 2441,
+    "separation_ft": 57.3
+   },
+   {
+    "station_ft": 2717,
+    "separation_ft": 47.5
+   },
+   {
+    "station_ft": 2756,
+    "separation_ft": 56.5
+   },
+   {
+    "station_ft": 3780,
+    "separation_ft": 52.4
+   },
+   {
+    "station_ft": 4016,
+    "separation_ft": 40.9
+   },
+   {
+    "station_ft": 4055,
+    "separation_ft": 0.0
+   },
+   {
+    "station_ft": 5906,
+    "separation_ft": 0.0
    }
   ]
  },
@@ -74,6 +166,16 @@
      "lat": 33.352791,
      "lon": -111.784189
     }
+   }
+  ],
+  "carriageway_separation": [
+   {
+    "station_ft": 0,
+    "separation_ft": 0.0
+   },
+   {
+    "station_ft": 1378,
+    "separation_ft": 0.0
    }
   ]
  }

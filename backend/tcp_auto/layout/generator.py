@@ -144,7 +144,7 @@ def generate(
     work_extent_ft: float,
     timeline: TimelineResult,
 ) -> TcpPlan:
-    cl = Centerline(road.centerline)
+    cl = Centerline.for_road(road)
     g = _geometry(road, details, cl)
     s_c, _ = cl.project(work_center)
     S = int(road.speed_mph)
@@ -381,9 +381,14 @@ def generate(
         road_left = -road_right
     else:
         road_left, road_right = -road.lanes_backward * g.lane_w, road.lanes_forward * g.lane_w
-    zones = [
-        Zone(kind="roadway", polygon=cl.strip(r_lo, r_hi, road_left, road_right, 16), start_station_ft=r_lo, end_station_ft=r_hi,
-             label=f"{road.name or 'Roadway'} ({road.lanes_forward}+{road.lanes_backward} lanes)"),
+    road_label = f"{road.name or 'Roadway'} ({road.lanes_forward}+{road.lanes_backward} lanes{', divided' if cl.median else ''})"
+    if cl.median and not road.one_way:
+        # two carriageways with the median between them (tiny offsets pick up the median push-out)
+        roadway = [Zone(kind="roadway", polygon=cl.strip(r_lo, r_hi, road_left, -0.001, 24), start_station_ft=r_lo, end_station_ft=r_hi, label=road_label),
+                   Zone(kind="roadway", polygon=cl.strip(r_lo, r_hi, 0.001, road_right, 24), start_station_ft=r_lo, end_station_ft=r_hi, label=road_label)]
+    else:
+        roadway = [Zone(kind="roadway", polygon=cl.strip(r_lo, r_hi, road_left, road_right, 16), start_station_ft=r_lo, end_station_ft=r_hi, label=road_label)]
+    zones = roadway + [
         Zone(kind="work_area", polygon=cl.strip(min(ws, we), max(ws, we), work_lo, work_hi), start_station_ft=min(ws, we), end_station_ft=max(ws, we), label=f"Work area {work_len:.0f} ft"),
         Zone(kind="buffer", polygon=cl.strip(min(ws, up(buf)), max(ws, up(buf)), work_lo, work_hi, 4), start_station_ft=min(ws, up(buf)), end_station_ft=max(ws, up(buf)), label=f"Buffer {buf:.0f} ft"),
         Zone(kind="taper", polygon=[cl.point(up(buf + taper), taper_from), cl.point(up(buf), taper_to), cl.point(up(buf), taper_from)], start_station_ft=min(up(buf), up(buf + taper)), end_station_ft=max(up(buf), up(buf + taper)), label=f"Taper {taper:.0f} ft"),

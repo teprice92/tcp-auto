@@ -36,7 +36,10 @@ class LocalFrame:
 class Centerline:
     """A polyline in local feet with stationing (distance along the line from its start)."""
 
-    def __init__(self, points: list[LatLon], frame: LocalFrame | None = None):
+    def __init__(self, points: list[LatLon], frame: LocalFrame | None = None, median: list[tuple[float, float]] | None = None):
+        """``median``: optional [(station_ft, width_ft)] profile of a divided road's median. Lanes on
+        each side are pushed out by half the median width at that station, so plans follow
+        carriageways that split apart around medians."""
         if len(points) < 2:
             raise ValueError("centerline needs at least two points")
         self.frame = frame or LocalFrame(points[0].lat, points[0].lon)
@@ -46,6 +49,24 @@ class Centerline:
             self.cum.append(self.cum[-1] + math.hypot(x1 - x0, y1 - y0))
         if self.length <= 0:
             raise ValueError("centerline has zero length")
+        self.median = sorted((float(s), max(0.0, float(w))) for s, w in (median or []))
+
+    @classmethod
+    def for_road(cls, road) -> "Centerline":
+        return cls(road.centerline, median=[(m.station_ft, m.width_ft) for m in getattr(road, "median", []) or []])
+
+    def median_half(self, station: float) -> float:
+        """Half the median width (ft) at a station (linear between profile points, flat past the ends)."""
+        m = self.median
+        if not m:
+            return 0.0
+        if station <= m[0][0]:
+            return m[0][1] / 2
+        for (s0, w0), (s1, w1) in zip(m, m[1:]):
+            if station <= s1:
+                t = (station - s0) / ((s1 - s0) or 1.0)
+                return (w0 + (w1 - w0) * t) / 2
+        return m[-1][1] / 2
 
     @property
     def length(self) -> float:
@@ -78,6 +99,8 @@ class Centerline:
         x = x0 + (x1 - x0) * t
         y = y0 + (y1 - y0) * t
         ux, uy = (x1 - x0) / seg, (y1 - y0) / seg
+        if offset and self.median:
+            offset += math.copysign(self.median_half(station), offset)
         # right-hand normal of (ux, uy) is (uy, -ux)
         return x + uy * offset, y - ux * offset
 
@@ -90,13 +113,18 @@ class Centerline:
         return (math.degrees(math.atan2(ux, uy)) + 360.0) % 360.0
 
     def project(self, p: LatLon) -> tuple[float, float]:
-        """Return (station, signed offset) of the closest point on the line (offset + = right)."""
+        """Return (station, signed lane offset) of the closest point on the line (offset + = right).
+
+        Stations extend past either end (points beyond the drawn line get negative or > length
+        stations), and the offset excludes the median, matching ``point``."""
         px, py = self.frame.to_xy(p)
         best = (float("inf"), 0.0, 0.0)
+        last = len(self.xy) - 2
         for i, ((x0, y0), (x1, y1)) in enumerate(zip(self.xy, self.xy[1:])):
             dx, dy = x1 - x0, y1 - y0
             seg2 = dx * dx + dy * dy or 1.0
-            t = max(0.0, min(1.0, ((px - x0) * dx + (py - y0) * dy) / seg2))
+            t = ((px - x0) * dx + (py - y0) * dy) / seg2
+            t = max(float("-inf") if i == 0 else 0.0, min(float("inf") if i == last else 1.0, t))
             cx, cy = x0 + dx * t, y0 + dy * t
             dist = math.hypot(px - cx, py - cy)
             if dist < best[0]:
@@ -104,7 +132,11 @@ class Centerline:
                 # cross product sign: positive when the point is to the left
                 cross = (dx * (py - y0) - dy * (px - x0)) / seg
                 best = (dist, self.cum[i] + t * seg, -cross)
-        return best[1], best[2]
+        station, off = best[1], best[2]
+        if self.median:
+            half = self.median_half(station)
+            off = 0.0 if abs(off) <= half else off - math.copysign(half, off)
+        return station, off
 
     def strip(self, s0: float, s1: float, off0: float, off1: float, steps: int = 8) -> list[LatLon]:
         """Polygon covering stations s0..s1 between two offsets (for zones)."""

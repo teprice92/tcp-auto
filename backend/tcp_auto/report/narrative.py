@@ -47,7 +47,7 @@ def _join(xs: list[str]) -> str:
 
 def explain(project: Project, plan: TcpPlan) -> list[str]:
     det, road, dims = project.details, project.road, plan.dimensions
-    cl = Centerline(road.centerline)
+    cl = Centerline.for_road(road)
     mid = (dims.work_start_station_ft + dims.work_end_station_ft) / 2
     fwd = cl.bearing_deg(mid)
     d = 1 if dims.work_end_station_ft >= dims.work_start_station_ft else -1

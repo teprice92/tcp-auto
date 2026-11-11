@@ -257,7 +257,7 @@ def update_devices(pid: str, devices: list[Device] = Body(...)) -> Project:
         prev = old.get(d.id)
         if prev is None or (abs(prev.lat - d.lat) > 1e-9 or abs(prev.lon - d.lon) > 1e-9):
             d.origin = "manual"
-    cl = Centerline(p.road.centerline)
+    cl = Centerline.for_road(p.road)
     for d in devices:
         if d.origin == "manual":
             st, _ = cl.project(LatLon(lat=d.lat, lon=d.lon))
