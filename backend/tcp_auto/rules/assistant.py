@@ -3,8 +3,9 @@
 The model only drafts. Every change is validated by ``schema.check_value`` and must be accepted by
 a reviewer before the planner uses it (see proposals.py).
 
-API key: ``ANTHROPIC_API_KEY`` in the environment, or a key saved in the app's settings
-(``<data>/settings.json``). Model: ``TCP_LLM_MODEL`` (default Claude Opus 5.5).
+Works with any LLM provider supported by ``llm.py`` (Anthropic, any OpenAI-compatible server
+including on-prem ones, Azure OpenAI). Settings live in ``<data>/settings.json`` under "llm", or in
+environment variables (see llm.py).
 """
 
 from __future__ import annotations
@@ -15,10 +16,9 @@ from pathlib import Path
 from typing import Any
 
 from . import engine
+from .llm import PRESETS, LLMConfig, LLMError, config_from, generator_for, is_configured
 from .proposals import NewLayer, RuleChange, RuleCite, RuleProposal, layer_rules
 from .schema import KEYS, schema_doc
-
-DEFAULT_MODEL = "claude-opus-5-5"
 
 
 class AssistantError(RuntimeError):
@@ -28,7 +28,7 @@ class AssistantError(RuntimeError):
 
 
 # ---------------------------------------------------------------------------
-# Settings (API key)
+# Settings
 # ---------------------------------------------------------------------------
 
 
@@ -46,14 +46,7 @@ def load_settings() -> dict:
     return {}
 
 
-def save_settings(api_key: str | None = None, model: str | None = None, clear_key: bool = False) -> dict:
-    s = load_settings()
-    if clear_key:
-        s.pop("anthropic_api_key", None)
-    elif api_key:
-        s["anthropic_api_key"] = api_key.strip()
-    if model:
-        s["model"] = model.strip()
+def _write_settings(s: dict) -> None:
     p = _settings_path()
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(json.dumps(s), encoding="utf-8")
@@ -61,21 +54,78 @@ def save_settings(api_key: str | None = None, model: str | None = None, clear_ke
         os.chmod(p, 0o600)
     except OSError:
         pass
+
+
+def current_config() -> tuple[LLMConfig, dict]:
+    try:
+        return config_from(load_settings())
+    except LLMError as e:
+        raise AssistantError(str(e), e.status) from e
+
+
+def save_settings(api_key: str | None = None, model: str | None = None, clear_key: bool = False, **fields: Any) -> dict:
+    """Update saved AI settings. Blank fields are left unchanged; the key is only replaced when a new one is given."""
+    s = load_settings()
+    llm = dict(s.get("llm") or {})
+    if not llm and s.get("anthropic_api_key"):  # migrate the earlier Anthropic-only format
+        llm = {"provider": "anthropic", "api_key": s.pop("anthropic_api_key"), "model": s.pop("model", "")}
+    if "provider" in fields and fields["provider"] and fields["provider"] != llm.get("provider"):
+        # switching provider: don't carry a key or model meant for another service
+        llm = {"provider": fields["provider"]}
+    for k in ("provider", "base_url", "api_version", "deployment", "json_mode"):
+        if fields.get(k) is not None:
+            llm[k] = str(fields[k]).strip()
+    for k in ("timeout", "max_output_tokens"):
+        if fields.get(k) not in (None, ""):
+            llm[k] = float(fields[k]) if k == "timeout" else int(fields[k])
+    if model is not None:
+        llm["model"] = model.strip()
+    if fields.get("extra_headers") is not None:
+        llm["extra_headers"] = {str(k): str(v) for k, v in dict(fields["extra_headers"]).items() if k}
+    if clear_key:
+        llm.pop("api_key", None)
+    elif api_key:
+        llm["api_key"] = api_key.strip()
+    try:
+        LLMConfig(**{k: v for k, v in llm.items() if v not in (None, "")})
+    except Exception as e:
+        raise AssistantError(f"Invalid AI settings: {e}", 400) from e
+    s.pop("anthropic_api_key", None)
+    s.pop("model", None)
+    s["llm"] = llm
+    _write_settings(s)
     return settings_status()
 
 
-def _api_key() -> str | None:
-    return os.environ.get("ANTHROPIC_API_KEY") or load_settings().get("anthropic_api_key")
+def settings_status() -> dict:
+    try:
+        cfg, src = config_from(load_settings())
+    except LLMError as e:
+        return {"configured": False, "reason": str(e), "presets": PRESETS}
+    ready, reason = is_configured(cfg)
+    return {**cfg.public(), "configured": ready, "reason": reason, "sources": src,
+            "source": src.get("api_key") or src.get("base_url"), "presets": PRESETS}
 
 
 def model_name() -> str:
-    return os.environ.get("TCP_LLM_MODEL") or load_settings().get("model") or DEFAULT_MODEL
+    cfg, _ = current_config()
+    return f"{cfg.provider}:{cfg.effective_model() or cfg.deployment}"
 
 
-def settings_status() -> dict:
-    key = _api_key()
-    source = "environment" if os.environ.get("ANTHROPIC_API_KEY") else ("app settings" if key else None)
-    return {"configured": bool(key), "source": source, "key_hint": f"…{key[-4:]}" if key else None, "model": model_name()}
+def test_connection(generator: Any = None) -> dict:
+    """Tiny structured request to check the endpoint, key, model, and JSON support."""
+    cfg, _ = current_config()
+    ready, reason = is_configured(cfg)
+    if not ready and generator is None:
+        raise AssistantError(reason, 400)
+    gen = generator or generator_for(cfg)
+    schema = {"type": "object", "properties": {"ok": {"type": "boolean"}, "speed_limit_mph": {"type": "integer"}},
+              "required": ["ok", "speed_limit_mph"], "additionalProperties": False}
+    try:
+        out = gen.generate_json("You extract facts as JSON.", "Text: 'The posted speed limit is 35 mph.' Return ok=true and the speed limit.", schema, max_tokens=200 if cfg.provider != "anthropic" else 1024)
+    except LLMError as e:
+        raise AssistantError(str(e), e.status) from e
+    return {"ok": True, "provider": cfg.provider, "model": cfg.effective_model() or cfg.deployment, "sample": out}
 
 
 # ---------------------------------------------------------------------------
@@ -125,23 +175,19 @@ Rule keys you can use:
 {schema}"""
 
 
-def _client():
-    try:
-        import anthropic
-    except ImportError as e:  # pragma: no cover
-        raise AssistantError("The 'anthropic' package isn't installed on the server.", 500) from e
-    key = _api_key()
-    if not key:
-        raise AssistantError("No API key configured. Add one under Rules → AI settings, or set ANTHROPIC_API_KEY on the server.", 400)
-    return anthropic.Anthropic(api_key=key)
-
-
-def draft(layer_id: str, new_layer: NewLayer | None, source_title: str, source_url: str, text: str, author: str = "", client: Any = None) -> RuleProposal:
+def draft(layer_id: str, new_layer: NewLayer | None, source_title: str, source_url: str, text: str, author: str = "",
+          client: Any = None, generator: Any = None) -> RuleProposal:
+    """``generator`` (anything with generate_json) or ``client`` (an Anthropic client) can be injected for tests."""
     if not text.strip():
         raise AssistantError("Paste the rule text from the source document first.", 400)
-    import anthropic
+    cfg, _ = current_config()
+    if generator is None:
+        if client is None:
+            ready, reason = is_configured(cfg)
+            if not ready:
+                raise AssistantError(f"AI drafting isn't set up: {reason} Open Rules → AI settings, or enter the rule manually.", 400)
+        generator = generator_for(cfg, client=client)
 
-    client = client or _client()
     if new_layer:
         context = f"This is a NEW {new_layer.level} rules layer for {new_layer.name}, {new_layer.state}. It has no rules yet."
     else:
@@ -154,42 +200,18 @@ def draft(layer_id: str, new_layer: NewLayer | None, source_title: str, source_u
         f"<source_text>\n{text[:60000]}\n</source_text>\n\n"
         "Propose rule changes for this layer based only on the source text. If the text repeats something already in the current rules, skip it unless the value differs."
     )
-    model = model_name()
     try:
-        response = client.beta.messages.create(
-            model=model,
-            max_tokens=16000,
-            system=SYSTEM.format(schema=schema_doc()),
-            messages=[{"role": "user", "content": user}],
-            output_config={"effort": "high", "format": {"type": "json_schema", "schema": DRAFT_SCHEMA}},
-            betas=["server-side-fallback-2026-07-01"],
-            fallbacks="default",
-        )
-    except anthropic.AuthenticationError as e:
-        raise AssistantError("The API key was rejected. Check it under Rules → AI settings.", 400) from e
-    except anthropic.PermissionDeniedError as e:
-        raise AssistantError("The API key doesn't have access to this model.", 400) from e
-    except anthropic.RateLimitError as e:
-        raise AssistantError("The AI service is rate-limiting requests. Try again in a minute.", 429) from e
-    except anthropic.BadRequestError as e:
-        raise AssistantError(f"The AI service rejected the request: {e.message}", 400) from e
-    except anthropic.APIStatusError as e:
-        raise AssistantError(f"AI service error ({e.status_code}). Try again later.", 502) from e
-    except anthropic.APIConnectionError as e:
-        raise AssistantError("Couldn't reach the AI service (network). Check the server's internet access.", 503) from e
-
-    if response.stop_reason == "refusal":
-        raise AssistantError("The AI declined to process this text. You can enter the rule manually instead.", 422)
-    if response.stop_reason == "max_tokens":
-        raise AssistantError("The text was too long to convert in one pass. Paste one section at a time.", 413)
-    text_out = next((b.text for b in response.content if getattr(b, "type", "") == "text"), "")
-    try:
-        data = json.loads(text_out)
-    except json.JSONDecodeError as e:
-        raise AssistantError("The AI returned an unreadable answer. Try again or enter the rule manually.", 502) from e
+        data = generator.generate_json(SYSTEM.format(schema=schema_doc()), user, DRAFT_SCHEMA, max_tokens=cfg.output_tokens())
+    except LLMError as e:
+        raise AssistantError(str(e), e.status) from e
+    if not isinstance(data, dict):
+        raise AssistantError("The AI returned an unexpected answer. Try again or enter the rule manually.", 502)
+    model = f"{cfg.provider}:{cfg.effective_model() or cfg.deployment}"
 
     changes = []
-    for c in data.get("changes", []):
+    for c in data.get("changes", []) or []:
+        if not isinstance(c, dict):
+            continue
         try:
             value = json.loads(c.get("value_json", "null"))
         except json.JSONDecodeError:
@@ -203,7 +225,7 @@ def draft(layer_id: str, new_layer: NewLayer | None, source_title: str, source_u
 
     return create(RuleProposal(
         author=author, layer_id=layer_id, new_layer=new_layer, source_title=source_title, source_url=source_url, source_text=text,
-        summary=data.get("summary", ""), questions=data.get("questions", []), changes=changes, origin="ai", model=model,
+        summary=str(data.get("summary", "")), questions=[str(q) for q in data.get("questions", []) or []], changes=changes, origin="ai", model=model,
     ))
 
 

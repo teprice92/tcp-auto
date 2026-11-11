@@ -80,8 +80,8 @@ async function renderPropose() {
   sel.onchange = () => $("#pNew").classList.toggle("hidden", sel.value !== "__new");
   $("#pAuthor").value = $("#pAuthor").value || me();
   $("#aiState").innerHTML = rulesState.ai.configured
-    ? `<span class="chip ok">AI ready</span> <span class="muted small">${esc(rulesState.ai.model)} · key ${esc(rulesState.ai.key_hint)} (${esc(rulesState.ai.source)})</span>`
-    : `<span class="chip warn">No API key</span> <span class="muted small">Add one in <a href="#" id="toSettings">AI settings</a> to draft rules from text, or write them manually below.</span>`;
+    ? `<span class="chip ok">AI ready</span> <span class="muted small">${esc(providerLabel(rulesState.ai.provider))} · ${esc(rulesState.ai.model || rulesState.ai.deployment || "")}</span>`
+    : `<span class="chip warn">AI not set up</span> <span class="muted small">Connect your company's LLM in <a href="#" id="toSettings">AI settings</a>, or write the rule manually below.</span>`;
   const ts = $("#toSettings"); if (ts) ts.onclick = (e) => { e.preventDefault(); rulesTab("settings"); };
   $("#pDraft").disabled = !rulesState.ai.configured;
   $("#mKey").innerHTML = rulesState.keys.map(k => `<option value="${k.key}">${esc(k.label)} (${k.key})</option>`).join("");
@@ -207,9 +207,46 @@ function currentView(c) {
 // ---------------------------------------------------------------- settings
 async function renderSettings() {
   const s = rulesState.ai = await api("/api/settings/ai");
-  $("#aiStatus").innerHTML = s.configured ? `<span class="chip ok">Configured</span> key ${esc(s.key_hint)} from ${esc(s.source)}` : '<span class="chip warn">Not configured</span>';
-  $("#aiModel").value = s.model;
-  $("#aiClear").disabled = s.source !== "app settings";
+  const presets = s.presets || [];
+  $("#aiPreset").innerHTML = '<option value="">(keep current)</option>' + presets.map(p => `<option value="${p.id}">${esc(p.label)}</option>`).join("");
+  $("#aiStatus").innerHTML = s.configured
+    ? `<span class="chip ok">Ready</span> <span class="muted small">${esc(providerLabel(s.provider))} · ${esc(s.model || s.deployment || "")}${s.key_hint ? " · key " + esc(s.key_hint) : ""}</span>`
+    : `<span class="chip warn">Not set up</span> <span class="muted small">${esc(s.reason || "")}</span>`;
+  $("#aiProvider").value = s.provider || "anthropic";
+  $("#aiModel").value = s.model || "";
+  $("#aiBaseUrl").value = s.base_url || "";
+  $("#aiDeployment").value = s.deployment || "";
+  $("#aiApiVersion").value = s.api_version || "";
+  $("#aiJsonMode").value = s.json_mode || "auto";
+  $("#aiTimeout").value = s.timeout || 180;
+  $("#aiMaxTokens").value = s.max_output_tokens || 0;
+  $("#aiHeaders").value = "";
+  $("#aiHeaders").placeholder = s.extra_header_names && s.extra_header_names.length
+    ? `saved: ${s.extra_header_names.join(", ")} (enter JSON to replace)` : '{"X-Gateway-Team": "utility-design"}';
+  $("#aiClear").disabled = !s.key_hint || (s.sources || {}).api_key === "environment";
+  const envLocked = Object.entries(s.sources || {}).filter(([, v]) => v === "environment").map(([k]) => k);
+  $("#aiTestResult").innerHTML = envLocked.length ? `Set by the server's environment (can't be changed here): ${envLocked.map(esc).join(", ")}` : "";
+  showProviderFields();
+}
+function providerLabel(p) { return { anthropic: "Anthropic", openai_compatible: "OpenAI-compatible", azure_openai: "Azure OpenAI" }[p] || p; }
+function showProviderFields() {
+  const p = $("#aiProvider").value;
+  $$("#rtab-settings [data-for]").forEach(el => el.classList.toggle("hidden", !el.dataset.for.split(" ").includes(p)));
+  $("#aiBaseUrl").placeholder = p === "anthropic" ? "optional: company gateway URL (default Anthropic API)"
+    : p === "azure_openai" ? "https://YOUR-RESOURCE.openai.azure.com" : "https://.../v1";
+}
+function settingsPayload() {
+  let headers = null;
+  const raw = $("#aiHeaders").value.trim();
+  if (raw) {
+    try { headers = JSON.parse(raw); } catch (_) { throw new Error('Extra headers must be JSON, e.g. {"X-Team": "design"}'); }
+  }
+  return {
+    provider: $("#aiProvider").value, model: $("#aiModel").value.trim(), base_url: $("#aiBaseUrl").value.trim(),
+    deployment: $("#aiDeployment").value.trim(), api_version: $("#aiApiVersion").value.trim(), json_mode: $("#aiJsonMode").value,
+    timeout: $("#aiTimeout").value, max_output_tokens: $("#aiMaxTokens").value, api_key: $("#aiKey").value.trim() || null,
+    ...(headers ? { extra_headers: headers } : {}),
+  };
 }
 
 function onRulesChanged() {
@@ -255,10 +292,29 @@ function onRulesChanged() {
     rulesState.drafts = []; renderManualList(); status("Sent to review"); rulesTab("review");
   });
   $("#aiSave").onclick = () => guard(async () => {
-    const key = $("#aiKey").value.trim();
-    await api("/api/settings/ai", { method: "PUT", json: { api_key: key || null, model: $("#aiModel").value.trim() || null } });
+    await api("/api/settings/ai", { method: "PUT", json: settingsPayload() });
     $("#aiKey").value = ""; status("AI settings saved"); renderSettings();
   });
+  $("#aiTest").onclick = () => guard(async () => {
+    $("#aiTestResult").textContent = "Testing...";
+    await api("/api/settings/ai", { method: "PUT", json: settingsPayload() });
+    $("#aiKey").value = "";
+    let r = null, err = null;
+    try { r = await api("/api/settings/ai/test", { method: "POST" }); } catch (e) { err = e; }
+    await renderSettings();
+    $("#aiTestResult").innerHTML = r
+      ? `<span class="chip ok">Connected</span> ${esc(providerLabel(r.provider))} · ${esc(r.model)} returned valid JSON.`
+      : `<span class="chip err">Failed</span> ${esc(err.message)}`;
+  });
+  $("#aiProvider").onchange = showProviderFields;
+  $("#aiPreset").onchange = () => {
+    const p = (rulesState.ai.presets || []).find(x => x.id === $("#aiPreset").value);
+    if (!p) return;
+    $("#aiProvider").value = p.provider; $("#aiBaseUrl").value = p.base_url; $("#aiModel").value = p.model;
+    $("#aiDeployment").value = "";
+    $("#aiKey").placeholder = p.needs_key ? "paste the API key" : "not needed for most local servers";
+    showProviderFields();
+  };
   $("#aiClear").onclick = () => guard(async () => { await api("/api/settings/ai", { method: "PUT", json: { clear_key: true } }); status("Key removed"); renderSettings(); });
   api("/api/rules/keys").then(k => { rulesState.keys = k; }).catch(() => {});
   refreshReviewCount().catch(() => {});

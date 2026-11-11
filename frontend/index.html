@@ -232,15 +232,46 @@
     </div>
 
     <div id="rtab-settings" class="rtab hidden narrow">
-      <p class="lead">AI drafting uses the Claude API. Without a key you can still add rules manually.</p>
+      <p class="lead">AI drafting works with any LLM your company uses: a cloud API, Azure OpenAI, or a model running on your own servers. Without one you can still add rules manually.</p>
       <div class="card2">
-        <div id="aiStatus"></div>
+        <div class="card2-h"><h3>AI provider</h3><div id="aiStatus"></div></div>
         <div class="form">
-          <label class="wide">API key <input id="aiKey" type="password" autocomplete="off" placeholder="sk-ant-…"></label>
-          <label class="wide">Model <input id="aiModel"></label>
-          <div class="sub-cta"><button id="aiClear" class="danger">Remove saved key</button>&nbsp;<button id="aiSave" class="primary">Save</button></div>
+          <label class="wide">Start from <select id="aiPreset"></select></label>
+          <label>Provider type
+            <select id="aiProvider">
+              <option value="anthropic">Anthropic (Claude API)</option>
+              <option value="openai_compatible">OpenAI-compatible API</option>
+              <option value="azure_openai">Azure OpenAI</option>
+            </select>
+          </label>
+          <label>Model <input id="aiModel" placeholder="as your provider names it"></label>
+          <label class="wide" data-for="openai_compatible azure_openai anthropic">Endpoint URL <input id="aiBaseUrl" placeholder="https://.../v1"></label>
+          <label data-for="azure_openai">Deployment name <input id="aiDeployment"></label>
+          <label data-for="azure_openai">API version <input id="aiApiVersion" placeholder="2024-10-21"></label>
+          <label class="wide">API key <input id="aiKey" type="password" autocomplete="off" placeholder="leave blank to keep the saved key"></label>
         </div>
-        <div class="hint">The key is stored on the FlagPole server, never shown again in the browser, and only used to draft rules. Setting <code>ANTHROPIC_API_KEY</code> on the server works too.</div>
+        <details class="adv"><summary>Advanced</summary>
+          <div class="form">
+            <label>JSON output
+              <select id="aiJsonMode">
+                <option value="auto">Auto (best the server supports)</option>
+                <option value="json_schema">Strict JSON schema</option>
+                <option value="json_object">JSON mode</option>
+                <option value="prompt">Instructions only (any model)</option>
+              </select>
+            </label>
+            <label>Timeout (seconds) <input id="aiTimeout" type="number" min="10" max="900"></label>
+            <label>Max output tokens <input id="aiMaxTokens" type="number" min="0" placeholder="0 = default"></label>
+            <label class="wide">Extra headers (JSON) <input id="aiHeaders" placeholder='{"X-Gateway-Team": "utility-design"}'></label>
+          </div>
+        </details>
+        <div class="row" style="justify-content:flex-end">
+          <button id="aiClear" class="danger">Remove saved key</button>
+          <button id="aiTest">Test connection</button>
+          <button id="aiSave" class="primary">Save</button>
+        </div>
+        <div id="aiTestResult" class="hint"></div>
+        <div class="hint">Settings and keys are stored on the FlagPole server; keys are never shown again in the browser. Servers can also be configured with environment variables (<code>TCP_LLM_PROVIDER</code>, <code>TCP_LLM_BASE_URL</code>, <code>TCP_LLM_MODEL</code>, <code>TCP_LLM_API_KEY</code>), which take priority. Only the pasted rule text is sent to the AI, never drawings.</div>
       </div>
     </div>
   </div>

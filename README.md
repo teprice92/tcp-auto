@@ -31,7 +31,7 @@ explanation, timeline) or an Outlook email draft to send to the city or county.
 | Night work | Detected from sunset/sunrise and city rules; drums, lit signs, light towers |
 | Drag-and-drop editor with live compliance checks | Working |
 | Report (PDF) and email draft (.eml for Outlook) | Working |
-| Rules editor | Library of all federal/state/county/city rules; propose changes with AI drafting (Claude API key) or manually; review queue with diff, edit, accept/reject; accepted rules saved locally and used by the planner |
+| Rules editor | Library of all federal/state/county/city rules; propose changes with AI drafting (any LLM: Anthropic, OpenAI-compatible incl. on-prem, Azure OpenAI) or manually; review queue with diff, edit, accept/reject; accepted rules saved locally and used by the planner |
 | Agency report vs. crew checklist | Report shows only what the agency needs; permits, lead times, bookings, open review notes, and gotchas go on a separate internal checklist |
 | Sign-in | Optional shared access key (`TCP_ACCESS_KEY`); invite-only sign-in planned |
 
@@ -105,8 +105,11 @@ cd backend && python -m pytest -q
 | `TCP_OVERPASS_URL`, `TCP_NOMINATIM_URL` | Map data services | public OSM endpoints |
 | `TCP_CHROMIUM` | Path to Chrome/Edge/Chromium for PDF export | auto-detected |
 | `TCP_PDF_ENGINE` | `auto` (Playwright, then installed browser) or `browser` (installed browser only) | `auto` |
-| `ANTHROPIC_API_KEY` | Claude API key for AI rule drafting (or save one in Rules → AI settings) | unset |
-| `TCP_LLM_MODEL` | Model for rule drafting | `claude-opus-5-5` |
+| `TCP_LLM_PROVIDER` | `anthropic`, `openai_compatible`, or `azure_openai` (see [AI providers](#ai-providers)) | from AI settings |
+| `TCP_LLM_BASE_URL` / `TCP_LLM_MODEL` / `TCP_LLM_API_KEY` | Endpoint, model, key for rule drafting | from AI settings |
+| `TCP_LLM_DEPLOYMENT` / `TCP_LLM_API_VERSION` | Azure OpenAI deployment and API version | — / `2024-10-21` |
+| `TCP_LLM_JSON_MODE`, `TCP_LLM_TIMEOUT`, `TCP_LLM_MAX_OUTPUT_TOKENS` | Output mode (`auto`, `json_schema`, `json_object`, `prompt`), timeout (s), output limit | `auto`, `180`, provider default |
+| `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_ENDPOINT` | Standard variables, used when no key/endpoint is set | unset |
 
 ## Updating rules
 
@@ -117,7 +120,41 @@ Open **Rules** in the top bar:
 
 Accepted rules are written to `<TCP_DATA_DIR>/rules_local/` as an overlay on the shipped `rules/` files, with a `changelog.jsonl`. That overlay is shared by everyone using the same FlagPole server; a database comes later for multi-server setups. A verified trigger replaces an unverified one with the same condition.
 
-The AI only drafts. Every value goes through the same validator as manual entries, and nothing reaches the planner until it's accepted. Drafting sends the pasted text, not drawings, to the Claude API. It uses Claude Opus 5.5 with server-side refusal fallback enabled (`fallbacks: "default"`).
+The AI only drafts. Every value goes through the same validator as manual entries, and nothing reaches the planner until it's accepted. Drafting sends the pasted text, never drawings, to whichever AI provider is configured.
+
+## AI providers
+
+FlagPole doesn't depend on any one AI vendor. It needs one thing from a model: "read this text and return JSON in this shape." Set the provider in **Rules → AI settings**, which has presets and a **Test connection** button, or with environment variables on the server. Environment variables take priority, which is handy when IT manages the server.
+
+| Provider type | Works with | Settings |
+|---|---|---|
+| `anthropic` | Anthropic Claude API, or a company gateway in front of it | API key; model (default `claude-opus-5-5`); optional gateway URL |
+| `openai_compatible` | OpenAI, Google Gemini (OpenAI endpoint), Mistral, Groq, OpenRouter, Together; **self-hosted / on-prem**: Ollama, vLLM, LM Studio, LocalAI, TGI; **gateways**: LiteLLM, Kong, Apigee. A gateway can front AWS Bedrock, Vertex AI and others | Endpoint URL (ending in `/v1`), model name, API key (often none for local servers) |
+| `azure_openai` | Azure OpenAI Service | Resource URL, deployment name, API version, API key |
+
+Examples:
+
+```bash
+# Company runs Ollama or vLLM on an internal server (nothing leaves the network)
+TCP_LLM_PROVIDER=openai_compatible TCP_LLM_BASE_URL=http://llm.internal:11434/v1 TCP_LLM_MODEL=<model> flagpole
+
+# Azure OpenAI
+TCP_LLM_PROVIDER=azure_openai AZURE_OPENAI_ENDPOINT=https://acme.openai.azure.com \
+  TCP_LLM_DEPLOYMENT=<deployment> AZURE_OPENAI_API_KEY=... flagpole
+
+# AWS Bedrock (or anything else) through a LiteLLM gateway
+TCP_LLM_PROVIDER=openai_compatible TCP_LLM_BASE_URL=https://litellm.corp/v1 TCP_LLM_MODEL=<gateway model name> TCP_LLM_API_KEY=... flagpole
+
+# Anthropic
+TCP_LLM_PROVIDER=anthropic ANTHROPIC_API_KEY=... flagpole
+```
+
+Notes:
+- **JSON output:** with `auto`, FlagPole tries strict JSON-schema output first, then JSON mode, then plain instructions. It remembers what each server supports, so older or local models still work. Whatever comes back is checked by the same rule validator.
+- **Gateway headers:** extra HTTP headers (for example a team or routing header) can be added under AI settings → Advanced.
+- **Proxies:** corporate proxies set with `HTTPS_PROXY` / `NO_PROXY` are honored.
+- **Model choice:** larger models produce better drafts. Small local models may need the "Instructions only" JSON mode and more reviewer edits.
+- **Anthropic:** uses the official SDK with server-side refusal fallback (`fallbacks: "default"`).
 
 ## Deploy
 

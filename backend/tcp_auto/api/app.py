@@ -454,7 +454,24 @@ def ai_settings() -> dict:
 def ai_settings_update(payload: dict[str, Any] = Body(...)) -> dict:
     from ..rules.assistant import save_settings
 
-    return save_settings(api_key=payload.get("api_key"), model=payload.get("model"), clear_key=bool(payload.get("clear_key")))
+    from ..rules.assistant import AssistantError
+
+    fields = {k: payload.get(k) for k in ("provider", "base_url", "api_version", "deployment", "json_mode", "timeout", "max_output_tokens", "extra_headers")}
+    try:
+        return save_settings(api_key=payload.get("api_key"), model=payload.get("model"), clear_key=bool(payload.get("clear_key")), **fields)
+    except AssistantError as e:
+        raise HTTPException(e.status, str(e))
+
+
+@app.post("/api/settings/ai/test")
+def ai_settings_test() -> dict:
+    """Send a tiny request to the configured AI provider to check URL, key, model, and JSON output."""
+    from ..rules.assistant import AssistantError, test_connection
+
+    try:
+        return test_connection()
+    except AssistantError as e:
+        raise HTTPException(e.status, str(e))
 
 
 # ---------------------------------------------------------------------------

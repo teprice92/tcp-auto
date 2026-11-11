@@ -267,3 +267,5 @@ details.src summary { cursor: pointer; font-size: 12.5px; color: var(--blue-700)
 .trig li { padding: 6px 10px; border-bottom: 1px solid var(--line); font-size: 12.5px; }
 .trig li:last-child { border-bottom: none; }
 .trig li.replaced { background: var(--warn-bg); text-decoration: line-through; text-decoration-color: #b5470888; }
+
+details.adv { margin: 4px 0 8px; } details.adv summary { cursor: pointer; font-size: 12.5px; font-weight: 600; color: var(--blue-700); }
