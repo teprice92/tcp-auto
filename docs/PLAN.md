@@ -21,7 +21,13 @@ Automated **Traffic Control Plan (TCP)** drafting from electrical/utility design
    enough room for two large utility trucks (e.g., bucket truck and digger derrick) plus working clearance.
 5. **Let engineers and construction consultants edit** the draft in a drag-and-drop editor
    that checks compliance as they work.
-6. **Export** a submittal-ready TCP sheet (PDF) with legend, device quantities, and notes.
+6. **Export a standalone TCP report** (PDF) that can be emailed straight to a county or city for
+   approval. It includes map figures drawn on an OpenStreetMap basemap, a plain-language narrative
+   explaining the plan, a sign and device legend, quantities, and rule citations.
+
+**The TCP is its own deliverable.** It is **not** drawn onto the electrical design sheets. The
+design PDF is only an *input* that tells the app where the work is and what is being done. All
+TCP drawings are generated fresh on a real street map.
 
 **Design principle:** deterministic software does the work wherever possible. An **LLM is an
 optional, pluggable assistant** (placeholder at first) for the fuzzy parts: reading notes,
@@ -46,8 +52,9 @@ flowchart LR
     E --> F[Road context<br/>speed, lanes, class, one-way]
     F --> G[Rules engine<br/>federal + state + county]
     G --> H[Layout generator<br/>draft TCP geometry]
-    H --> I[Drag-and-drop editor<br/>live compliance checks]
-    I --> J[Export<br/>PDF TCP sheet + quantities]
+    H --> I[Drag-and-drop editor<br/>on OSM street map]
+    I --> J[TCP report<br/>PDF + map figures + narrative]
+    J --> K[Email to county<br/>for approval]
 
     L[[LLM assistant<br/>placeholder]] -.-> C
     L -.-> E
@@ -96,16 +103,22 @@ Heuristics, applied in order, configurable per utility:
 
 Items with low confidence get flagged for the **LLM assistant** (placeholder) and then for user confirmation.
 
-### 3.3 Georeferencing
+### 3.3 Locating the work on the map
 
-Plans have to be tied to real-world coordinates so we can look up the road and place devices on it.
+Because the TCP is drawn on a street map and not on the design sheet, we don't need a precise
+sheet-to-world overlay. We only need **where the work is** (street, block, side of road) and
+**how long a stretch it covers**.
 
 Options, in priority order:
 1. **Embedded geo data** (GeoPDF / coordinates in the title block or grid ticks).
-2. **Address / intersection geocoding** from the title block and street labels, plus the sheet scale and north arrow.
-3. **Manual pinning (always available)**: the user drops 2–3 control points (e.g., "this pole = this spot on the map"). Compute a similarity/affine transform.
+2. **Address / intersection geocoding** from the title block and street labels (e.g., "1200 Main St"
+   or "Main St & 5th Ave"), using Nominatim or another geocoder. Sheet scale + north arrow give the
+   work extent in feet.
+3. **Manual pin (always available)**: the user drops a pin on the map where the work is and drags
+   the work-zone ends. Optionally add 2–3 control points (e.g., "this pole = this spot") if they
+   want the device positions carried over more precisely.
 
-Output: a transform `sheet_xy → lat/lon` with an error estimate.
+Output: a work location (lat/lon + road segment) and an extent, each with a confidence estimate.
 
 ### 3.4 Centerpoint and work extent
 
@@ -220,9 +233,10 @@ Everything placed is tagged `generated` with the rule that produced it. User edi
 
 ### 3.8 Drag-and-drop editor
 
-Web app with **two synchronized views**:
-- **Map view** (MapLibre GL on a street basemap or aerial): the georeferenced TCP on real roads.
-- **Sheet view**: the original PDF page with the work items highlighted, for cross-checking.
+Web app built around a **map view**: MapLibre GL on an OpenStreetMap-based street basemap (with an
+optional aerial layer where licensing allows). The TCP is drawn and edited here, on real roads.
+A collapsible **reference panel** shows the original design PDF with the work items highlighted,
+for cross-checking only. Nothing is drawn on the design sheet.
 
 Editor features:
 - **Device palette** (MUTCD sign codes with icons, cones, drums, Type I/II/III barricades,
@@ -235,10 +249,50 @@ Editor features:
 - Undo/redo, version history, comments, and a reviewer sign-off state (`draft → in review → approved`).
 - Quantity table that updates live (counts of signs, cones, barricades, flaggers, officers).
 
-### 3.9 Export
-- **PDF TCP sheet**: plan view, legend, device quantity table, general notes (from rules plus the
-  user), title block, north arrow, scale, typical application reference, and signature/stamp block.
-- JSON (round-trip) and GeoJSON. DXF export later for CAD users.
+### 3.9 TCP report (emailable approval package)
+
+The main output is a **self-contained PDF report** that a county or city reviewer can open from an
+email and understand without the app or the design plans. It both **illustrates** the plan (maps,
+diagrams) and **explains** it (plain-language narrative).
+
+**Report contents** (template-driven, configurable per jurisdiction):
+
+| # | Section | Contents |
+|---|---|---|
+| 1 | Cover / summary | Project name, utility, permit/job #, address, dates and hours of work, duration, contact, one-paragraph summary ("Right lane of Main St closed for 300 ft between 4th and 5th Ave for pole replacement; two-way traffic kept using flaggers") |
+| 2 | Location map | Small-scale OSM map with the work zone highlighted, nearby cross streets labeled |
+| 3 | TCP overview map | Whole layout on the OSM basemap: advance warning signs, tapers, buffer, work area, trucks, termination, north arrow, scale bar, legend |
+| 4 | Detail maps | One zoomed figure per approach direction / side street, with dimension callouts (taper length, sign spacing, buffer, work area length) |
+| 5 | Sign sequence | Strip diagram of each approach showing sign faces (MUTCD codes and icons) in order with distances |
+| 6 | Narrative | Generated, plain-language explanation: why this typical application was chosen, how traffic moves through the zone, pedestrian/bike accommodation, flagger and police positions, reduced-speed zone, emergency vehicle access |
+| 7 | Compliance table | Each key value (taper, spacing, buffer, sign distances) with required minimum, value provided, and citation (MUTCD section / state / county rule) |
+| 8 | Device quantities | Signs by code, cones/drums, barricades, arrow boards, PCMS, flaggers, officers |
+| 9 | Notes | General notes from the rules plus project-specific notes |
+| 10 | Approval block | Preparer, reviewer, certification #, signature/stamp area, and a county approval box |
+
+**How it's built**
+- Map figures are rendered server-side from the same plan data the editor uses (MapLibre in a
+  headless browser via Playwright, or a static map renderer), at print resolution, with the
+  required "© OpenStreetMap contributors" attribution.
+- The narrative is **generated from templates** using the plan data, so it is deterministic and
+  always matches the drawing. The LLM can optionally polish the wording later but can't change facts.
+- The report is laid out as HTML/CSS and printed to PDF (Playwright), which keeps styling easy and
+  makes per-county templates simple. Letter or 11×17 page sizes.
+- Keep file size **email-friendly** (target < 10 MB) with compressed map images.
+
+**Sending it**
+- "Email to county" action: pre-fills recipient (from the jurisdiction file), subject, and a short
+  cover message, with the PDF attached. Start with a download + `mailto:` draft; add direct sending
+  (SMTP or an email API) and delivery/approval tracking later.
+- Optional attachments: KML/GeoJSON of the layout (reviewers can open it in Google Earth or GIS),
+  and an editable DOCX version if a county asks for one.
+- Status tracking per plan: `draft → in review → sent to county → approved / revisions requested`.
+
+**Other exports:** JSON (round-trip), GeoJSON/KML, and DXF later for CAD users.
+
+**Map data and tiles:** use OpenStreetMap data, but not the public `tile.openstreetmap.org` servers
+for production (their usage policy forbids heavy use). Use a hosted OSM tile provider (e.g.,
+MapTiler, Stadia, Thunderforest) or self-host vector tiles (e.g., Protomaps/PMTiles). Always show attribution.
 
 ---
 
@@ -285,7 +339,8 @@ Rules for the LLM:
 | Database | **PostgreSQL + PostGIS** (SQLite for local dev) | Spatial queries, versioning |
 | File storage | Local disk → S3-compatible | Uploaded PDFs, exports |
 | Frontend | **React + TypeScript + Vite**, **MapLibre GL JS**, dnd-kit for palette | Drag-and-drop on a real map |
-| PDF export | ReportLab or headless browser (Playwright) print | Submittal-quality sheets |
+| Basemap | OSM data via hosted tile provider or self-hosted PMTiles; Nominatim geocoding | Free, editable street data; no CAD base needed |
+| Report export | HTML/CSS templates (Jinja2) → PDF via Playwright; map figures rendered headless | Emailable, styled reports with maps; easy per-county templates |
 | Testing | pytest (golden-file tests per sample plan), Vitest, Playwright E2E | Regressions in geometry are subtle |
 
 Proposed repo layout:
@@ -302,7 +357,8 @@ tcp-auto/
       layout/        # template selection + device placement
       compliance/    # checks shared by generator and editor
       assistant/     # PlanAssistant interface, NullAssistant, providers
-      export/        # PDF/GeoJSON
+      report/        # narrative templates, map figure rendering, PDF report, email package
+      export/        # GeoJSON/KML/JSON
       api/           # FastAPI routes
     tests/
   frontend/          # React editor
@@ -327,16 +383,18 @@ tcp-auto/
 |---|---|---|
 | **0. Foundation** | Repo scaffolding, CI, data models, sample plan collection | 5–10 real (sanitized) plans with hand-made reference TCPs |
 | **1. Ingestion MVP** | Vector PDF → PageModel, scale detection, keyword-based install/remove extraction, utility profile YAML | ≥ 90% of work items found on sample vector plans |
-| **2. Georef + site** | Manual 2-point pinning, OSM road lookup, centerpoint/extent, 250 ft minimum | Centerpoint within ~25 ft of the reference on samples |
+| **2. Location + site** | Address geocoding + manual pin, OSM road lookup, centerpoint/extent, 250 ft minimum | Centerpoint within ~25 ft of the reference on samples |
 | **3. Rules engine** | Federal baseline + 1 pilot state + 1 pilot county, citations, police/flagger/speed rules | Unit tests reproduce MUTCD tables and formulas |
 | **4. Layout generator** | 4–5 typical applications (shoulder, 2-lane flagger, multilane lane closure, intersection) | Generated drafts pass compliance checks and match reference layouts |
 | **5. Editor** | Map editor, palette, snapping, live compliance, versions | Consultant can fix a draft in < 15 min |
-| **6. Export** | PDF TCP sheet + quantities | Accepted by pilot agency/reviewer as submittal format |
+| **6. TCP report** | Emailable PDF report: OSM map figures, sign sequence, narrative, compliance table, quantities; email draft + KML | Accepted by pilot county as an approval submittal |
 | **7. LLM integration** | Real provider behind `PlanAssistant` for notes, ambiguous symbols, centerpoint, review | Measurable lift over heuristics on samples, with human confirmation |
 | **8. Scale-out** | More jurisdictions, raster/OCR improvements, multi-zone/detours, DXF | Driven by customer demand |
 
-**Suggested first build slice (vertical):** one vector PDF → manual pin → OSM speed/lanes →
-federal rules → TA-10 (two-lane, flagger) layout → shown read-only on a map. Then add editing.
+**Suggested first build slice (vertical):** one vector PDF → address/manual pin → OSM speed/lanes →
+federal rules → TA-10 (two-lane, flagger) layout → shown read-only on an OSM map → **basic PDF
+report** (overview map + narrative + quantities). This gives an emailable result early; editing
+comes next.
 
 ---
 
@@ -358,7 +416,9 @@ federal rules → TA-10 (two-lane, flagger) layout → shown read-only on a map.
 1. **Pilot jurisdiction(s):** which state(s) and county/city should we encode first?
 2. **Sample plans:** can you provide a few real PDFs (sanitized) and, ideally, the TCPs that were actually approved for them?
 3. **Symbology:** do the plans come from one utility/engineering firm (one legend) or many?
-4. **Submittal format:** does the agency require a specific sheet size, title block, or TCP template?
+4. **Submittal format:** does the county require a specific report layout, page size, or form?
+   Do they accept a PDF by email, or use a permit portal? A sample of a previously approved TCP
+   submittal would be ideal for building the report template.
 5. **Who uses it:** internal engineers only, or outside consultants too (auth, multi-tenant, roles)?
 6. **Deployment:** hosted web app, on-prem, or desktop?
 7. **Work types beyond lane closures:** intersections, sidewalk closures, night work, road closures with detours?
