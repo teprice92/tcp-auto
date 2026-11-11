@@ -12,15 +12,15 @@ Automated **Traffic Control Plan (TCP)** drafting from electrical/utility design
 ## 1. Goals
 
 1. **Ingest** electrical design plans (mostly PDF, sometimes with handwritten or typed notes)
-   that mark grid devices as **install/construct** or **remove**.
+   that mark grid devices as **Construct** or **Remove**.
 2. **Find the work location**: the centerpoint and extent of the work, placed on the real road network.
 3. **Generate a draft TCP** that follows the federal MUTCD baseline plus **state and county/city rules**:
    signs, channelizing devices (cones/drums/barricades), tapers, buffers, flaggers,
    **police officers where required**, and reduced-speed / slow-down zones.
 4. **Make the work zone at least 250 ft long** (`MIN_WORK_AREA_FT = 250`, configurable),
    enough room for two large utility trucks (e.g., bucket truck and digger derrick) plus working clearance.
-5. **Let engineers and construction consultants edit** the draft in a drag-and-drop editor
-   that checks compliance as they work.
+5. **Let anyone on the team edit** the draft in a drag-and-drop editor that checks compliance
+   as they work.
 6. **Export a standalone TCP report** (PDF) that can be emailed straight to a county or city for
    approval. It includes map figures drawn on an OpenStreetMap basemap, a plain-language narrative
    explaining the plan, a sign and device legend, quantities, and rule citations.
@@ -30,13 +30,18 @@ design PDF is only an *input* that tells the app where the work is and what is b
 TCP drawings are generated fresh on a real street map.
 
 ### Project context (confirmed)
-- **Organization:** an electrical utility company (one organization plus outside consultants).
-- **Pilot area:** **Arizona: Maricopa County and Pinal County** (see §3.6.1).
-- **Users:** designers, engineers, inspectors, schedulers, and construction consultants (see §3.10).
+- **Organization:** an electrical utility company, plus outside construction consultants.
+- **Area:** **Arizona, East Valley**: Mesa, Chandler, Gilbert, Tempe, Queen Creek, Apache Junction,
+  and nearby unincorporated Maricopa and Pinal county areas such as San Tan Valley (see §3.6.1).
+- **It's a tool, not a workflow system.** Designers, engineers, inspectors, schedulers, and
+  construction consultants all use the same simple tool: upload a drawing, get a draft TCP, adjust
+  it, export the report. No approval routing, status tracking, or role-specific screens (see §3.10).
+- **Drawings:** assume each work item is labeled with some form of **"Construct"** or **"Remove"**,
+  and that the work is **next to a road** (see §3.2). Sample drawings will come later.
 - **Report:** no county-mandated format. Must include a **map highlighting the main elements**,
   a **brief explanation**, and a **timeline** (see §3.9).
 - **Missing information** on drawings (dates, hours, speed, contacts, etc.) is entered by the user (see §3.2.1).
-- **Deployment:** hosted web app (see §5.1).
+- **Platform:** hosted web app on **Microsoft 365 / Azure**, with Microsoft sign-in (see §5.1).
 
 **Design principle:** deterministic software does the work wherever possible. An **LLM is an
 optional, pluggable assistant** (placeholder at first) for the fuzzy parts: reading notes,
@@ -47,6 +52,8 @@ output comes with a confidence score and a rationale, and a human confirms it be
 - Replacing the engineer of record or automating permit submission.
 - Long-term or complex staging (multi-phase detours, full road closures with detour routing). Leave hooks for these.
 - Fully automatic handling of scanned raster plans. These get OCR plus a manual-assist path.
+- Process management: approval routing, review stages, status tracking, scheduling calendars,
+  field inspection workflows. Users handle those however they do today; the tool just produces the plan and report.
 
 ---
 
@@ -55,15 +62,15 @@ output comes with a confidence score and a rationale, and a human confirms it be
 ```mermaid
 flowchart LR
     A[Upload PDF plan] --> B[Ingestion<br/>text, vectors, symbols, notes]
-    B --> C[Work-item extraction<br/>install / remove devices]
-    C --> D[Georeference<br/>pin plan to map]
+    B --> C[Find work items<br/>"Construct" / "Remove"]
+    C --> D[Locate on map<br/>address / pin]
     D --> E[Centerpoint + work extent]
     E --> F[Road context<br/>speed, lanes, class, one-way]
     F --> G[Rules engine<br/>federal + state + county]
     G --> H[Layout generator<br/>draft TCP geometry]
     H --> I[Drag-and-drop editor<br/>on OSM street map]
     I --> J[TCP report<br/>PDF + map figures + narrative]
-    J --> K[Email to county<br/>for approval]
+    J --> K[Outlook draft to agency<br/>or download PDF]
 
     L[[LLM assistant<br/>placeholder]] -.-> C
     L -.-> E
@@ -98,19 +105,30 @@ Outputs (`PageModel`):
 
 ### 3.2 Work-item extraction
 
-Goal: a list of `WorkItem { kind, action, location_on_sheet, label, source_refs }`.
+Goal: a list of `WorkItem { action, kind?, location_on_sheet, label_text, source_refs }`.
 
-- **Device kinds**: pole, transformer (pole-mount/pad-mount), switch, recloser, capacitor bank, streetlight, guy/anchor, conductor span, vault/handhole, riser.
-- **Action**: `install`, `remove`, `replace`, `transfer`, `existing` (context only).
+**Working assumption for v1 (until sample drawings arrive):** every work item is labeled with some
+form of **"Construct"** or **"Remove"**, and the work is next to a road. So v1 extraction is
+**keyword-driven**:
 
-Heuristics, applied in order, configurable per utility:
-1. **Legend-driven matching**: parse the sheet legend, then match symbols by shape, line style, and layer.
-2. **Text tags** near symbols: `INSTALL`, `REMOVE`, `PROP.`, `EXIST.`, `(R)`, `(N)`, `RMV`, `INST`, `RELOCATE`.
-3. **Line style conventions**: e.g., solid/bold = proposed, dashed/light = existing, X-hatch = remove.
-4. **Layer names** in CAD PDFs: e.g., `E-PROP-POLE`, `E-REMOVE`.
-5. **Utility profile**: a per-customer YAML that maps that utility's symbology and keywords.
+1. Find text spans matching the keyword list (case-insensitive, tolerant of abbreviations and line breaks):
+   - **Construct:** `CONSTRUCT`, `CONSTR`, `CONST`, `CONSTRUCTION`, `CNST`, also `INSTALL`/`INST`/`NEW`/`PROPOSED` as fallbacks
+   - **Remove:** `REMOVE`, `REMOVAL`, `RMV`, `REM`, `RMVL`
+   - Phrases like `REMOVE & REPLACE` or `REMOVE EXISTING / CONSTRUCT NEW` produce both actions at one spot.
+2. Each match becomes a `WorkItem` at the label's position. If a leader line or a nearby symbol is
+   found, use the symbol's position instead.
+3. Read the rest of the label for the device type when present (e.g., "CONSTRUCT 45' POLE",
+   "REMOVE TRANSFORMER"): pole, transformer, switch, streetlight, guy/anchor, conductor, vault, riser.
+   If no type is found the item is still used; the device type is only for the report wording.
+4. Ignore matches inside the title block, legend, and general-notes areas (detected by position and
+   block size), so "ALL REMOVED MATERIAL SHALL BE..." in the notes doesn't count as a work item.
+5. Show all found items highlighted on the drawing. The user can **add, delete, or move** items
+   with a click before continuing.
 
-Items with low confidence get flagged for the **LLM assistant** (placeholder) and then for user confirmation.
+The keyword list is a config file, so it can be adjusted when real drawings arrive.
+
+**Later (once samples are available):** legend-driven symbol matching, line styles
+(solid = proposed, dashed = existing), CAD layer names, and the LLM assistant for unclear labels.
 
 ### 3.2.1 Project details form (user input fills the gaps)
 
@@ -152,7 +170,9 @@ Output: a work location (lat/lon + road segment) and an extent, each with a conf
 ### 3.4 Centerpoint and work extent
 
 Deterministic baseline:
-1. Take all `install`/`remove`/`replace` items that are **in or next to the roadway**. Items far behind the curb or in an easement get flagged as "may not need a TCP".
+1. Take all Construct/Remove items. Per the working assumption, they are **next to a road**, so every
+   project gets a TCP. Snap each item to the nearest road. If the nearest road is unusually far
+   (e.g., > 100 ft), show a warning so the user can check the location.
 2. Project them onto the nearest **road centerline** (linear referencing).
 3. Work extent = `[min_station, max_station]` of the projected items, plus truck clearance.
 4. **Work area length = max(MIN_WORK_AREA_FT (250), extent + clearance)**, centered on the item cluster.
@@ -184,8 +204,12 @@ rules/
   states/AZ-adot.yaml               # ADOT rules for state routes
   counties/AZ/maricopa.yaml         # MCDOT permit / police / hours rules
   counties/AZ/pinal.yaml            # Pinal County Public Works rules
-  cities/AZ/phoenix.yaml            # city barricade manual / permit conditions
-  cities/AZ/mesa.yaml               # ...one file per city as they are added
+  cities/AZ/mesa.yaml               # city barricade manual / permit conditions
+  cities/AZ/chandler.yaml
+  cities/AZ/gilbert.yaml
+  cities/AZ/tempe.yaml
+  cities/AZ/queen-creek.yaml
+  cities/AZ/apache-junction.yaml
   utilities/<utility>.yaml          # symbology + company safety policy (can be stricter)
 ```
 
@@ -248,7 +272,7 @@ rules:
 > Real jurisdiction files must be written from the actual adopted documents. The values above
 > are placeholders. This repo should ship **federal baseline + Arizona + Maricopa/Pinal** first.
 
-#### 3.6.1 Pilot jurisdictions: Arizona, Maricopa County, Pinal County
+#### 3.6.1 Pilot jurisdictions: Arizona East Valley (Maricopa and Pinal counties)
 
 **Which rules apply depends on who owns the road**, not just which county the work is in. Inside
 Maricopa and Pinal counties there are three main road owners:
@@ -256,8 +280,16 @@ Maricopa and Pinal counties there are three main road owners:
 | Road owner | Examples | Rule chain |
 |---|---|---|
 | **ADOT** (state routes, interstates, US routes) | I-10, SR-87, SR-347, US-60 | Federal → Arizona → ADOT |
-| **County** (unincorporated areas) | MCDOT roads; Pinal County roads in areas like San Tan Valley | Federal → Arizona → county |
-| **City / town** (incorporated areas) | Phoenix, Mesa, Chandler, Gilbert, Scottsdale, Tempe, Glendale; Casa Grande, Maricopa, Florence, Apache Junction | Federal → Arizona → county (if it applies) → city |
+| **County** (unincorporated areas) | MCDOT roads in county islands; Pinal County roads in San Tan Valley, Gold Canyon | Federal → Arizona → county |
+| **City / town** (incorporated areas) | East Valley: Mesa, Chandler, Gilbert, Tempe, Queen Creek, Apache Junction | Federal → Arizona → county (if it applies) → city |
+
+Notes for the East Valley:
+- **Queen Creek** and **Apache Junction** each span both Maricopa and Pinal counties, so the
+  city/town rules apply regardless of county.
+- **County islands** (unincorporated pockets inside Mesa, Gilbert, etc.) are common. The road-owner
+  lookup has to use actual boundaries, not just the city name in the address.
+- **Tribal lands** (Gila River Indian Community, Salt River Pima-Maricopa Indian Community) border
+  the area and have their own permit processes. v1 detects them and shows a warning instead of applying rules.
 
 The app resolves the owner automatically from GIS layers: city/town limits, ADOT route centerlines,
 and county road inventories (most are published as open data). The user can override it. The
@@ -269,8 +301,8 @@ Source documents to obtain and encode (verify the current edition and exact titl
 - **MAG** (Maricopa Association of Governments) Uniform Standard Specifications and Details, used by many Maricopa cities.
 - **MCDOT** right-of-way permit and traffic control requirements (unincorporated Maricopa County).
 - **Pinal County Public Works** right-of-way / encroachment permit requirements.
-- **City barricade manuals and permit conditions**, starting with the cities where the utility
-  works most (e.g., the City of Phoenix traffic barricade manual).
+- **City barricade manuals / traffic control requirements and right-of-way permit conditions**
+  for Mesa, Chandler, Gilbert, Tempe, Queen Creek, and Apache Junction.
 
 Arizona-specific rule topics to capture:
 - Peak-hour lane-closure restrictions on arterials (common in metro Phoenix cities). Exact hours vary by agency.
@@ -280,8 +312,9 @@ Arizona-specific rule topics to capture:
 - Pedestrian/ADA accommodation where sidewalks are closed.
 - Report delivery: permit office email or permit portal per agency (stored in the jurisdiction file).
 
-**Pilot order (suggested):** (1) unincorporated Maricopa and Pinal county roads, (2) the 2–3 cities
-with the most utility work, (3) ADOT state routes, (4) the remaining cities.
+**Pilot order (suggested):** (1) federal + Arizona baseline (works anywhere, with a "local rules
+not loaded" warning), (2) Mesa, Chandler, Gilbert, (3) Tempe, Queen Creek, Apache Junction,
+(4) Maricopa and Pinal county roads, (5) ADOT routes (e.g., US-60, SR-87, SR-202, SR-24).
 
 ### 3.7 Layout generator
 
@@ -316,7 +349,7 @@ Editor features:
 - **Live compliance panel**: e.g., "Taper is 180 ft, needs ≥ 245 ft at 35 mph" or
   "Sign B spacing 220 ft < 350 ft". Click a warning to jump to the device.
 - Edit road context (speed, lanes) and regenerate, keeping manual edits where possible.
-- Undo/redo, version history, comments, and a reviewer sign-off state (`draft → in review → approved`).
+- Undo/redo, saved versions, and simple comments.
 - Quantity table that updates live (counts of signs, cones, barricades, flaggers, officers).
 
 ### 3.9 TCP report (emailable approval package)
@@ -350,7 +383,8 @@ Supporting detail goes on optional appendix pages the user can switch on or off.
 
 **Timeline details**
 
-The timeline comes from the project details form (§3.2.1), or from the schedule if a scheduler set one.
+The timeline is entered by the user in the project details form (§3.2.1). Anyone on the
+project, such as a scheduler, can fill it in.
 
 - Phases, default set: **mobilize & set up traffic control → work → remove traffic control & demobilize**.
   Users can add phases (e.g., "Day 1: set poles", "Day 2: transfer conductors") or a per-day breakdown.
@@ -370,46 +404,44 @@ The timeline comes from the project details form (§3.2.1), or from the schedule
 - Keep file size **email-friendly** (target < 10 MB) with compressed map images.
 
 **Sending it**
-- "Email to county" action: pre-fills recipient (from the jurisdiction file), subject, and a short
-  cover message, with the PDF attached. Start with a download + `mailto:` draft; add direct sending
-  (SMTP or an email API) and delivery/approval tracking later.
+- **Download PDF** is always available.
+- **"Email to agency"** creates an **Outlook draft** (via Microsoft Graph) addressed to the right
+  permit office (from the jurisdiction file), with a short cover message and the PDF attached.
+  The user reviews and sends it from their own mailbox, so it comes from them and stays in their Sent items.
+- Optional: save the PDF to a **SharePoint/OneDrive** folder the team already uses.
 - Optional attachments: KML/GeoJSON of the layout (reviewers can open it in Google Earth or GIS),
-  and an editable DOCX version if a county asks for one.
-- Status tracking per plan: `draft → in review → sent to county → approved / revisions requested`.
+  and an editable DOCX version if an agency asks for one.
+- No approval tracking in the app; replies come back to the user's inbox as usual.
 
 **Other exports:** JSON (round-trip), GeoJSON/KML, and DXF later for CAD users.
 
-### 3.10 Users, roles, and workflow
-
-One organization (the utility) with outside consultants invited per project.
-
-| Role | Main tasks | Key permissions |
-|---|---|---|
-| **Designer** | Upload drawings, confirm work items, fill in project details, generate and edit the TCP | Create/edit projects and plans |
-| **Engineer** | Review drafts, fix issues, approve/sign, maintain utility rule files | Edit, approve, manage rules |
-| **Scheduler** | Set dates, hours, phases; coordinate flaggers/police; see the calendar across projects | Edit timeline; view plans |
-| **Inspector** | Check the setup in the field against the plan; record photos, notes, and deviations | View plans (mobile); add field reports |
-| **Construction consultant** (external) | Prepare or adjust TCPs for assigned projects | Edit/comment only on projects they're invited to |
-| **Admin** | Users, roles, organization settings, jurisdiction contacts | Everything |
-
-Plan status flow:
-`draft → engineer review → approved internally → sent to agency → agency approved / revisions requested → active in field → closed`.
-Every change is logged (who, what, when) for accountability.
-
-**Scheduler view:** a calendar and list of upcoming work across all projects, with filters for
-county/city, status, and flagger/police needs. It highlights conflicts such as two closures
-on the same road on the same day, or work outside allowed hours.
-
-**Inspector field mode (mobile-friendly):**
-- Open the plan on a phone or tablet at the site, with GPS location shown on the map.
-- A checklist generated from the plan (signs in place and spaced correctly, taper length, cones,
-  flaggers, police present).
-- Attach photos and notes. Mark deviations and send them back to the designer.
-- Field reports are stored with the project and can be added to the record.
-
 **Map data and tiles:** use OpenStreetMap data, but not the public `tile.openstreetmap.org` servers
 for production (their usage policy forbids heavy use). Use a hosted OSM tile provider (e.g.,
-MapTiler, Stadia, Thunderforest) or self-host vector tiles (e.g., Protomaps/PMTiles). Always show attribution.
+MapTiler, Stadia, Thunderforest), Azure Maps, or self-hosted vector tiles (e.g., Protomaps/PMTiles).
+Always show attribution.
+
+### 3.10 Users and sharing (kept simple)
+
+This is a **shared tool**, not a process system. Designers, engineers, inspectors, schedulers, and
+construction consultants all see the same app and can do the same things:
+
+- Create a project, upload a drawing, fill in details, generate and edit the TCP, export the report.
+- Browse and search all projects (by job #, address, city, date) and open any of them.
+- Duplicate an existing plan as a starting point for similar work.
+- View a plan on a phone or tablet (responsive layout). Handy for inspectors and field crews, but there's no separate field mode.
+
+Only two permission levels:
+
+| Level | Who | Can do |
+|---|---|---|
+| **Member** | Utility staff (signed in with their Microsoft 365 account) and invited consultants | Everything above |
+| **Admin** | A few designated people | Manage users and invites, edit jurisdiction rule files, keyword list, and report branding |
+
+Outside consultants are invited as **guests** in the utility's Microsoft tenant (Entra B2B), so they
+sign in with their own work account. Optionally, guests see only projects shared with them.
+
+The app keeps a simple **change history** (who changed what, when) on each plan, so anyone can see
+and restore earlier versions.
 
 ---
 
@@ -454,25 +486,29 @@ Rules for the LLM:
 | Rules | YAML + Pydantic models + small expression evaluator | Auditable, editable without code changes |
 | Jobs | Background worker (RQ/Celery or FastAPI BackgroundTasks to start) | PDF processing can be slow |
 | Database | **PostgreSQL + PostGIS** (SQLite for local dev) | Spatial queries, versioning |
-| File storage | Local disk → S3-compatible | Uploaded PDFs, exports |
+| File storage | Local disk → **Azure Blob Storage** | Uploaded PDFs, exports |
+| Auth & email | **Microsoft Entra ID** (OIDC via MSAL), **Microsoft Graph** (Outlook drafts, SharePoint) | Fits Microsoft 365; no new passwords |
 | Frontend | **React + TypeScript + Vite**, **MapLibre GL JS**, dnd-kit for palette | Drag-and-drop on a real map |
 | Basemap | OSM data via hosted tile provider or self-hosted PMTiles; Nominatim geocoding | Free, editable street data; no CAD base needed |
 | Report export | HTML/CSS templates (Jinja2) → PDF via Playwright; map figures rendered headless | Emailable, styled reports with maps; easy per-county templates |
 | Testing | pytest (golden-file tests per sample plan), Vitest, Playwright E2E | Regressions in geometry are subtle |
 
-### 5.1 Hosting and security
+### 5.1 Hosting and security (Microsoft 365 / Azure)
 
-- **Hosted web app** in a major cloud (Azure or AWS; pick whichever the utility already uses).
-  Containerized backend and worker, managed PostgreSQL/PostGIS, object storage for PDFs and reports.
-- **Single sign-on** with the utility's identity provider (e.g., Microsoft Entra ID via OIDC/SAML)
-  for staff. Invited guest accounts or the consultant's own SSO for outside consultants.
-- **Role-based access control** per §3.10, scoped per project for external users.
-- Utility drawings show grid infrastructure, which is **sensitive**. Encrypt in transit and at rest,
-  keep an audit log, limit external access to assigned projects, and set data retention rules.
-  Don't send drawings to an LLM provider without approval from the utility's security team
-  (§4 can stay disabled).
-- Mobile-friendly UI for inspectors (responsive web first; offline support later if field coverage is poor).
-- Environments: dev, staging, production. Daily backups.
+- **Hosted on Azure**, in the utility's own tenant/subscription if IT prefers:
+  - Azure Container Apps (or App Service) for the web app, API, and background worker
+  - Azure Database for PostgreSQL (Flexible Server) with PostGIS
+  - Azure Blob Storage for drawings and reports
+  - Azure Key Vault for secrets
+- **Sign-in with Microsoft 365** (Entra ID single sign-on). Staff use their normal work account;
+  consultants are invited as Entra guests. Access can be limited to a security group.
+- **Outlook and SharePoint integration** through Microsoft Graph, with delegated permissions so the
+  app acts as the signed-in user (drafts in their mailbox, files in folders they can already access).
+- Utility drawings show grid infrastructure, which is **sensitive**: encrypt in transit and at rest,
+  keep change history, and set data retention. Don't send drawings to an outside LLM provider without
+  approval from the utility's security team (§4 can stay disabled, or use a model hosted in the
+  utility's Azure tenant if approved).
+- Environments: dev and production (staging later if needed). Daily backups.
 
 Proposed repo layout:
 
@@ -490,9 +526,9 @@ tcp-auto/
       assistant/     # PlanAssistant interface, NullAssistant, providers
       report/        # narrative templates, map figure rendering, PDF report, email package
       export/        # GeoJSON/KML/JSON
-      schedule/      # phases, timeline, work-hour checks, scheduler calendar
-      field/         # inspector checklists, photos, deviations
-      auth/          # SSO, roles, project-level permissions
+      timeline/      # phases, work-hour checks
+      auth/          # Entra ID sign-in, member/admin, guest sharing
+      msgraph/       # Outlook drafts, SharePoint/OneDrive upload
       api/           # FastAPI routes
     tests/
   frontend/          # React editor
@@ -505,12 +541,12 @@ tcp-auto/
 - `Project { details (§3.2.1, each field with source), road_owner, jurisdiction_chain, members[] }`
 - `Project` → `PlanDocument` (PDF, pages) → `WorkItem[]`
 - `Phase { name, start, end, daily_hours, days, tcp_plan_id, flaggers, police }`
-- `FieldReport { inspector, timestamp, gps, checklist_results, photos[], deviations[] }`
-- `User { roles[] }`, `ProjectMember { user, role }`
+- `User { entra_id, name, email, is_admin, is_guest }`
+- `PlanVersion { plan_id, version, author, timestamp, snapshot }`
 - `WorkZone { centerline_ref, start_station, end_station, side, lanes_affected, length_ft ≥ 250 }`
 - `RoadContext { speed_mph, lanes, class, divided, one_way, urban, sources{} }`
 - `ResolvedRules { values{}, citations{}, jurisdiction_chain[] }`
-- `TcpPlan { version, template_id, devices[], warnings[], status }`
+- `TcpPlan { version, template_id, devices[], warnings[] }`
 - `Device { id, type, mutcd_code?, geometry, rotation, direction, origin: generated|manual, rule_ref? }`
 
 ---
@@ -520,21 +556,21 @@ tcp-auto/
 | Phase | Deliverable | Exit criteria |
 |---|---|---|
 | **0. Foundation** | Repo scaffolding, CI, data models, sample plan collection | 5–10 real (sanitized) plans with hand-made reference TCPs |
-| **1. Ingestion MVP** | Vector PDF → PageModel, scale detection, keyword-based install/remove extraction, utility profile YAML | ≥ 90% of work items found on sample vector plans |
+| **1. Ingestion MVP** | Vector PDF → PageModel, scale detection, **"Construct"/"Remove" keyword extraction**, click to add/remove items | Finds the labeled items on test drawings (synthetic until samples arrive) |
 | **2. Location + site** | Address geocoding + manual pin, OSM road lookup, centerpoint/extent, 250 ft minimum | Centerpoint within ~25 ft of the reference on samples |
 | **3. Rules engine** | Federal baseline + Arizona + Maricopa/Pinal county roads, road-owner detection, citations, police/flagger/speed/hours rules | Unit tests reproduce MUTCD tables and formulas; road owner correct on sample locations |
 | **4. Layout generator** | 4–5 typical applications (shoulder, 2-lane flagger, multilane lane closure, intersection) | Generated drafts pass compliance checks and match reference layouts |
 | **5. Editor** | Map editor, palette, snapping, live compliance, versions | Consultant can fix a draft in < 15 min |
 | **6. TCP report + timeline** | Emailable PDF: highlighted TCP map, brief explanation, timeline; optional appendices; email draft + KML | Accepted by Maricopa/Pinal reviewers as an approval submittal |
-| **6b. Roles & scheduling** | SSO, roles, consultant invites, status workflow, scheduler calendar, inspector field mode | Each role can complete its main task end to end |
+| **6b. Microsoft 365** | Entra ID sign-in, guest invites, Outlook draft with PDF, optional SharePoint save, Azure deployment | Staff and a consultant can sign in, make a plan, and email it from Outlook |
 | **7. LLM integration** | Real provider behind `PlanAssistant` for notes, ambiguous symbols, centerpoint, review | Measurable lift over heuristics on samples, with human confirmation |
 | **8. Scale-out** | More jurisdictions, raster/OCR improvements, multi-zone/detours, DXF | Driven by customer demand |
 
 **Suggested first build slice (vertical):** one vector PDF → project details form (user fills the
 gaps) → address/manual pin → OSM speed/lanes → federal + Arizona rules → TA-10 (two-lane, flagger)
 layout → shown read-only on an OSM map → **basic PDF report** (highlighted map + brief explanation +
-timeline). Use a location on an unincorporated Maricopa or Pinal county road. This gives an
-emailable result early; editing, roles, and scheduling come next.
+timeline). Use a location on a Mesa, Chandler, or Gilbert street and a test drawing labeled
+"Construct"/"Remove". This gives an emailable result early; editing and Microsoft 365 sign-in come next.
 
 ---
 
@@ -542,9 +578,9 @@ emailable result early; editing, roles, and scheduling come next.
 
 | Risk | Mitigation |
 |---|---|
-| Symbology differs by utility/engineer | Per-utility profile YAML; legend parsing; LLM fallback; user confirmation |
+| Drawings don't follow the "Construct"/"Remove" assumption | Editable keyword list; click to add/remove items; add legend parsing and the LLM once samples arrive |
 | Wrong speed or lane data from OSM | Always show the source; require the user to confirm speed; allow overrides |
-| Legal liability for non-compliant plans | Draft-only status, mandatory reviewer sign-off, citations on every value, audit log |
+| Legal liability for non-compliant plans | "Draft – requires qualified review" note on reports, citations on every value, change history |
 | Local rules are scattered and change often | Rules as versioned data with effective dates; per-jurisdiction owners; start with pilot jurisdictions |
 | Scanned/low-quality PDFs | OCR + manual-assist workflow; never block, fall back to manual |
 | LLM hallucination | Structured outputs, software validation, can't override minimums, human-in-the-loop |
@@ -557,24 +593,19 @@ emailable result early; editing, roles, and scheduling come next.
 
 | Topic | Decision |
 |---|---|
-| Pilot jurisdictions | Arizona: Maricopa and Pinal counties |
+| Area | Arizona East Valley: Mesa, Chandler, Gilbert, Tempe, Queen Creek, Apache Junction, plus unincorporated Maricopa/Pinal |
 | Organization | Electrical utility, with outside construction consultants |
-| Users | Designers, engineers, inspectors, schedulers, construction consultants |
+| Scope | A shared tool for everyone (designers, engineers, inspectors, schedulers, consultants); no workflow/process management |
+| Drawings | Assume work items are labeled with some form of "Construct" or "Remove" and are next to roads |
 | Report format | No required format; highlighted map + brief explanation + timeline |
 | Missing drawing info | Entered by the user in the project details form |
-| Deployment | Hosted web app |
+| Platform | Hosted web app on Azure with Microsoft 365 sign-in and Outlook integration |
 
 **Still open**
 
-1. **Sample plans:** can you share a few real design PDFs (sanitized)? Approved TCPs for the same jobs would help too.
-2. **Symbology:** are drawings made in-house with one standard legend, or by several design firms?
-3. **Where the utility works most:** which cities in Maricopa/Pinal (and how often on ADOT routes)?
-   This sets the order for adding city rules.
-4. **Police officers:** do you already know when agencies require off-duty officers? Should the app
-   help with the officer request or scheduling?
-5. **Cloud and sign-in:** does the utility use Microsoft 365/Entra ID (for single sign-on) and prefer Azure or AWS?
-6. **LLM use:** will the utility's security team allow sending drawing excerpts to an LLM provider,
-   or should the assistant stay disabled or self-hosted?
-7. **Other work types:** intersections, sidewalk closures, night work, or full road closures with detours?
-8. **Existing systems:** should projects link to a work-order or scheduling system (e.g., job numbers
-   imported automatically)?
+1. **Sample drawings:** a few real (sanitized) PDFs to confirm the "Construct"/"Remove" assumption and tune the keyword list.
+2. **Police officers:** do you know when East Valley cities require off-duty officers?
+3. **LLM use:** will the utility's security team allow sending drawing excerpts to an LLM provider
+   (or one hosted in the utility's Azure tenant), or should the assistant stay disabled?
+4. **Other work types:** intersections, sidewalk closures, night work, or full road closures with detours?
+5. **Azure ownership:** will IT host it in the utility's own Azure subscription, or should it run in a separate one?

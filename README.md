@@ -26,5 +26,9 @@ editor, LLM interface, roadmap, and open questions.
 
 Planning phase. No code yet.
 
-Pilot area: Arizona (Maricopa and Pinal counties). Users: designers, engineers, inspectors,
-schedulers, and construction consultants at an electrical utility. Hosted web app.
+- **Area:** Arizona East Valley (Mesa, Chandler, Gilbert, Tempe, Queen Creek, Apache Junction,
+  and unincorporated Maricopa/Pinal).
+- **Users:** one shared tool for designers, engineers, inspectors, schedulers, and construction
+  consultants at an electrical utility. No workflow or approval process built in.
+- **Drawings:** v1 assumes work items are labeled "Construct" or "Remove" and sit next to roads.
+- **Platform:** hosted on Azure with Microsoft 365 sign-in; reports can go out as Outlook drafts.
