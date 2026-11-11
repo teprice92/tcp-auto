@@ -62,7 +62,7 @@ output comes with a confidence score and a rationale, and a human confirms it be
 ```mermaid
 flowchart LR
     A[Upload PDF plan] --> B[Ingestion<br/>text, vectors, symbols, notes]
-    B --> C[Find work items<br/>"Construct" / "Remove"]
+    B --> C[Find work items<br/>Construct / Remove labels]
     C --> D[Locate on map<br/>address / pin]
     D --> E[Centerpoint + work extent]
     E --> F[Road context<br/>speed, lanes, class, one-way]
