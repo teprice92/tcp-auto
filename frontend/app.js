@@ -30,12 +30,46 @@ async function api(path, opts = {}) {
   const ct = r.headers.get("content-type") || "";
   return ct.includes("json") ? r.json() : r;
 }
+let toastTimer = null;
 function status(msg, isError = false) {
-  const el = $("#status");
-  el.textContent = msg || "";
-  el.style.color = isError ? "#fda29b" : "#fcd9bd";
-  if (msg && !isError) setTimeout(() => { if (el.textContent === msg) el.textContent = ""; }, 4000);
+  const el = $("#toast");
+  if (!msg) { el.classList.remove("show"); return; }
+  el.textContent = msg;
+  el.classList.toggle("error", isError);
+  el.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove("show"), isError ? 7000 : 3500);
 }
+
+// Small in-app dialog. `body` is HTML with named inputs; resolves to an object of values or null.
+function ask(title, body, okLabel = "OK") {
+  const dlg = $("#dlg");
+  $("#dlgTitle").textContent = title;
+  $("#dlgBody").innerHTML = body;
+  $("#dlgOk").textContent = okLabel;
+  return new Promise((resolve) => {
+    dlg.onclose = () => {
+      if (dlg.returnValue !== "ok") return resolve(null);
+      const out = {};
+      $$("input, select, textarea", $("#dlgBody")).forEach(el => {
+        if (!el.name) return;
+        if (el.type === "radio") { if (el.checked) out[el.name] = el.value; }
+        else out[el.name] = el.type === "checkbox" ? el.checked : el.value;
+      });
+      resolve(out);
+    };
+    dlg.returnValue = "";
+    dlg.showModal();
+    const first = $("input:not([type=radio]), select", $("#dlgBody"));
+    if (first) first.focus();
+  });
+}
+const SIGN_CODES = [
+  ["W20-1", "ROAD WORK AHEAD"], ["W20-5R", "RIGHT LANE CLOSED AHEAD"], ["W20-5L", "LEFT LANE CLOSED AHEAD"],
+  ["W4-2R", "LANE ENDS (right)"], ["W4-2L", "LANE ENDS (left)"], ["W20-4", "ONE LANE ROAD AHEAD"], ["W20-7", "FLAGGER"],
+  ["W21-5", "SHOULDER WORK"], ["W3-5", "REDUCED SPEED AHEAD"], ["W16-1P", "SHARE THE ROAD"], ["R9-9", "SIDEWALK CLOSED"],
+  ["R9-11a", "SIDEWALK CLOSED, CROSS HERE"], ["R3-1", "NO RIGHT TURN"], ["R3-2", "NO LEFT TURN"], ["G20-2", "END ROAD WORK"],
+];
 async function guard(fn) {
   try { return await fn(); } catch (e) { status(e.message, true); console.error(e); }
 }
@@ -78,9 +112,16 @@ function setMode(mode, hint = "") {
   const ids = { work: "#modeWork", centerline: "#modeCenterline", intersection: "#modeIntersection" };
   if (ids[mode]) $(ids[mode]).classList.add("active");
   if (mode && mode.startsWith("place:")) { const b = $(`#palette button[data-type="${mode.slice(6)}"]`); if (b) b.classList.add("active"); }
-  $("#modeHint").textContent = hint;
+  $("#modebar").classList.toggle("hidden", !mode);
+  $("#modeText").textContent = hint;
+  $("#modeDone").classList.toggle("hidden", mode !== "centerline");
   map.getContainer().style.cursor = mode ? "crosshair" : "";
   if (mode === "centerline") { state.draftLine = []; layers.draft.clearLayers(); }
+  if (mode) $("#empty").classList.add("hidden"); else updateEmpty();
+}
+function updateEmpty() {
+  const p = state.project;
+  $("#empty").classList.toggle("hidden", !p || !!(p.work_center || (p.road && p.road.centerline.length)) || !!state.mode);
 }
 
 async function onMapClick(ll) {
@@ -94,16 +135,16 @@ async function onMapClick(ll) {
     layers.draft.clearLayers();
     L.polyline(state.draftLine.map(q => [q.lat, q.lon]), { color: "#2e90fa", weight: 4, dashArray: "6 6" }).addTo(layers.draft);
     state.draftLine.forEach(q => L.circleMarker([q.lat, q.lon], { radius: 4, color: "#2e90fa" }).addTo(layers.draft));
-    $("#modeHint").textContent = `${state.draftLine.length} point(s). Draw in one direction along the street, well past the work in both directions. Double-click or click "Draw road centerline" again to finish.`;
+    $("#modeText").textContent = `${state.draftLine.length} point${state.draftLine.length === 1 ? "" : "s"} placed. Keep clicking along the street, then Finish.`;
     return;
   }
   if (state.mode === "intersection") {
     if (!p.road) throw new Error("Save the road centerline first");
     const { station, distance } = stationOf(p.road.centerline, pt);
     if (distance > 200) throw new Error("Click closer to the road centerline");
-    const name = prompt("Cross street name?", "") ?? "";
-    const signalized = confirm("Is this intersection signalized? (OK = yes)");
-    p.road.intersections.push({ station_ft: Math.round(station), cross_street: name, signalized });
+    const v = await ask("Add intersection", `<label class="f">Cross street <input name="name" placeholder="e.g. S Rural Rd"></label><label class="c"><input type="checkbox" name="signalized"> Signalized (traffic signal)</label>`, "Add");
+    if (!v) return;
+    p.road.intersections.push({ station_ft: Math.round(station), cross_street: v.name, signalized: v.signalized });
     p.road.intersections.sort((a, b) => a.station_ft - b.station_ft);
     await save({ road: p.road }); setMode(null); return;
   }
@@ -112,8 +153,10 @@ async function onMapClick(ll) {
     const type = state.mode.slice(6);
     const dv = { id: Math.random().toString(16).slice(2, 14), type, lat: pt.lat, lon: pt.lon, origin: "manual", direction: "forward", group: groupFor(type), label: type };
     if (type === "sign") {
-      dv.code = (prompt("Sign code (e.g. W20-1, W20-5R, W4-2R, G20-2, R9-9)", "W20-1") || "W20-1").toUpperCase();
-      dv.label = dv.code;
+      const v = await ask("Add sign", `<label class="f">Sign <select name="code">${SIGN_CODES.map(([c, l]) => `<option value="${c}">${c} – ${l}</option>`).join("")}<option value="other">Other…</option></select></label><label class="f">Other code (optional) <input name="other" placeholder="e.g. W12-101"></label>`, "Add sign");
+      if (!v) { setMode(null); return; }
+      dv.code = (v.code === "other" || v.other ? v.other || "W20-1" : v.code).toUpperCase();
+      dv.label = (SIGN_CODES.find(([c]) => c === dv.code) || [, dv.code])[1];
       dv.group = dv.code.startsWith("G20") ? "termination" : "advance_warning";
     }
     p.plan.devices.push(dv);
@@ -197,8 +240,19 @@ function renderIssues() {
   const plan = state.project && state.project.plan;
   const ul = $("#issues"); ul.innerHTML = "";
   const rq = $("#reqs"); rq.innerHTML = "";
-  $("#dims").textContent = "";
+  $("#dims").innerHTML = "";
+  $("#summary").innerHTML = "";
+  updateSteps();
   if (!plan) return;
+  const n = (s) => plan.issues.filter(i => i.severity === s).length;
+  const police = plan.requirements.filter(r => r.kind === "police" && r.required).length;
+  $("#summary").innerHTML = [
+    n("error") ? `<span class="chip err">${n("error")} error${n("error") > 1 ? "s" : ""}</span>` : `<span class="chip ok">No errors</span>`,
+    n("warning") ? `<span class="chip warn">${n("warning")} warning${n("warning") > 1 ? "s" : ""}</span>` : "",
+    police ? `<span class="chip info">Police officer required</span>` : "",
+    plan.night ? `<span class="chip info">Night work</span>` : "",
+    `<span class="chip info">v${plan.version}</span>`,
+  ].join("");
   const order = { error: 0, warning: 1, info: 2 };
   [...plan.issues].sort((a, b) => order[a.severity] - order[b.severity]).forEach(i => {
     const li = document.createElement("li");
@@ -210,12 +264,42 @@ function renderIssues() {
   if (!plan.issues.length) ul.innerHTML = '<li class="info">No issues found.</li>';
   plan.requirements.forEach(r => {
     const li = document.createElement("li");
-    li.className = r.kind === "police" && r.required ? "error" : "info";
+    li.className = r.kind === "police" && r.required ? "police" : "info";
     li.innerHTML = `${r.kind === "police" && r.required ? "<b>Police officer required:</b> " : ""}${esc(r.text)}${r.required ? "" : ' <span class="muted">(may be required)</span>'}${r.verified ? "" : ' <span class="tag">confirm with agency</span>'}${r.citation ? `<span class="cite">${esc(r.citation)}</span>` : ""}`;
     rq.appendChild(li);
   });
   const d = plan.dimensions;
-  $("#dims").innerHTML = `Template: <b>${esc(d.template)}</b>${plan.night ? " (night)" : ""} · ${d.speed_mph} mph · work area ${Math.round(d.work_area_ft)} ft · buffer ${Math.round(d.buffer_ft)} ft · taper ${Math.round(d.taper_ft)} ft (${esc(d.taper_type)}) · signs A/B/C ${d.sign_spacing_ft.A}/${d.sign_spacing_ft.B}/${d.sign_spacing_ft.C} ft · spacing ${d.taper_spacing_ft}/${d.tangent_spacing_ft} ft`;
+  const tpl = { shoulder: "Shoulder work", two_lane_flagger: "Two-lane, flaggers", lane_closure_multilane: "Multi-lane closure" }[d.template] || d.template;
+  const cell = (v, k) => `<div><b>${v}</b><span>${k}</span></div>`;
+  $("#dims").innerHTML = [
+    cell(esc(tpl), "layout"), cell(`${d.speed_mph} mph`, "posted speed"), cell(`${Math.round(d.work_area_ft)} ft`, "work area"),
+    cell(`${Math.round(d.buffer_ft)} ft`, "buffer"), cell(`${Math.round(d.taper_ft)} ft`, esc(d.taper_type)),
+    cell(`${d.sign_spacing_ft.A}/${d.sign_spacing_ft.B}/${d.sign_spacing_ft.C}`, "sign spacing A/B/C ft"),
+    cell(`${d.taper_spacing_ft} / ${d.tangent_spacing_ft} ft`, "device spacing taper/tangent"),
+  ].join("");
+}
+
+function updateSteps() {
+  const p = state.project; if (!p) return;
+  const set = (key, text, cls, done) => {
+    const chip = $(`[data-chip="${key}"]`); chip.textContent = text; chip.className = "chip " + (cls || "");
+    chip.closest(".step").classList.toggle("done", !!done);
+  };
+  const items = p.extraction ? p.extraction.items.filter(i => i.included).length : 0;
+  set("drawing", p.drawing_filename ? `${items} item${items === 1 ? "" : "s"}` : "No drawing", p.drawing_filename ? "ok" : "", !!p.drawing_filename);
+  const d = p.details;
+  const detailsDone = (d.city || d.road_owner !== "city") && d.phases.length;
+  set("details", detailsDone ? (d.city || d.road_owner) : "To do", detailsDone ? "ok" : "", detailsDone);
+  const roadDone = p.road && p.road.centerline.length >= 2 && p.work_center;
+  set("road", roadDone ? (p.road.speed_confirmed ? `${p.road.speed_mph} mph` : "Confirm speed") : "To do", roadDone ? (p.road.speed_confirmed ? "ok" : "warn") : "", roadDone);
+  if (p.plan) {
+    const errs = p.plan.issues.filter(i => i.severity === "error").length;
+    set("plan", errs ? `${errs} error${errs > 1 ? "s" : ""}` : "Ready", errs ? "err" : "ok", !errs);
+    set("report", "Ready to export", "ok", false);
+  } else {
+    set("plan", "Not generated", "", false);
+    set("report", "Waiting for plan", "", false);
+  }
 }
 
 // ---------------------------------------------------------------- drawing step
@@ -241,18 +325,19 @@ function renderDrawing() {
   wrap.onclick = (e) => guard(async () => {
     const r = img.getBoundingClientRect();
     const x = (e.clientX - r.left) / r.width * page.width, y = (e.clientY - r.top) / r.height * page.height;
-    const action = confirm("Add a CONSTRUCT item here? (Cancel = REMOVE)") ? "construct" : "remove";
-    const label = prompt("Label (e.g. 45' pole)", "") || "(added by user)";
-    ex.items.push({ id: Math.random().toString(16).slice(2, 14), action, device_type: null, label_text: label, page: page.page, x, y, confidence: 1, source: "user", included: true });
+    const v = await ask("Add work item", `<div class="seg"><label><input type="radio" name="action" value="construct" checked>Construct</label><label><input type="radio" name="action" value="remove">Remove</label></div><label class="f">Label <input name="label" placeholder="e.g. 45' pole"></label>`, "Add item");
+    if (!v) return;
+    ex.items.push({ id: Math.random().toString(16).slice(2, 14), action: v.action, device_type: null, label_text: v.label || "(added by user)", page: page.page, x, y, confidence: 1, source: "user", included: true });
     await putItems();
   });
   ex.items.forEach((i, k) => {
     const li = document.createElement("li");
-    li.innerHTML = `<input type="checkbox" ${i.included ? "checked" : ""}><span class="badge ${i.action}">${i.action}</span><span class="grow">${esc(i.label_text)}</span><span class="badge">${esc(i.device_type || "")}</span>`;
+    li.innerHTML = `<input type="checkbox" ${i.included ? "checked" : ""} aria-label="Include item"><span class="pill ${i.action}">${i.action}</span><span class="grow">${esc(i.label_text)}</span>${i.device_type ? `<span class="pill">${esc(i.device_type.replace("_", " "))}</span>` : ""}`;
     $("input", li).onchange = (e) => guard(async () => { i.included = e.target.checked; await putItems(); });
     list.appendChild(li);
   });
   (ex.warnings || []).forEach(w => { const li = document.createElement("li"); li.innerHTML = `<span class="tag">note</span> ${esc(w)}`; list.appendChild(li); });
+  if (ex.items.length) { const li = document.createElement("li"); li.innerHTML = `<span class="hint">Untick anything that isn't real work. Click the drawing to add a missed item.</span>`; list.appendChild(li); }
 }
 async function putItems() {
   state.project = await api(`/api/projects/${state.project.id}/items`, { method: "PUT", json: state.project.extraction.items });
@@ -296,13 +381,25 @@ function readDetails() {
   })).filter(ph => ph.start_date);
   return d;
 }
+// "from drawing" badges next to fields that were filled from the PDF
+function markSources() {
+  $$(".badge-src").forEach(b => b.remove());
+  Object.entries(state.project.field_sources || {}).forEach(([field, src]) => {
+    const input = $(`#detailsForm [name="${field}"]`);
+    if (input && input.value) input.parentElement.firstChild.after(Object.assign(document.createElement("span"), { className: "badge-src", textContent: "from " + src }));
+  });
+}
 async function previewRules() {
   const d = state.project.details;
   const q = new URLSearchParams({ city: d.city, county: d.county, road_owner: d.road_owner });
   const r = await api(`/api/rules/preview?${q}`);
-  const peak = r.peak_hours ? `Peak-hour limits: ${r.peak_hours.weekdays.join(", ")} on ${r.peak_hours.road_class.join("/")} streets.` : "No peak-hour rule loaded.";
-  const police = r.police_triggers.map(t => `${esc(t.role)}${t.verified ? "" : " (unverified)"}`).join("; ");
-  $("#rulesPreview").innerHTML = `<b>Rules:</b> ${r.chain.map(esc).join(" → ")}<br>${esc(peak)}${police ? "<br>Police: " + police : ""}${r.warnings.map(w => "<br>⚠ " + esc(w)).join("")}`;
+  const pretty = (l) => l.split("/").pop().replace("mutcd-11", "MUTCD 11th Ed.").replace("AZ", "Arizona").replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+  const peak = r.peak_hours ? `No restrictions ${r.peak_hours.weekdays.join(" and ")} on weekday ${r.peak_hours.road_class.join("/")} streets.` : "No peak-hour rule loaded for this area.";
+  const police = r.police_triggers.map(t => `${esc(t.role)}${t.verified ? "" : ' <span class="tag">unverified</span>'}`).join("<br>");
+  $("#rulesPreview").innerHTML =
+    `<li class="info"><b>Rules applied:</b> ${r.chain.map(l => esc(pretty(l))).join(" → ")}<span class="cite">${esc(peak)}</span></li>` +
+    (police ? `<li class="info"><b>Police officer rules</b><span class="cite">${police}</span></li>` : "") +
+    r.warnings.map(w => `<li class="warning">${esc(w)}</li>`).join("");
 }
 
 // ---------------------------------------------------------------- road step
@@ -344,7 +441,7 @@ async function saveDevices() {
   drawPlan(); renderIssues();
 }
 function renderAll(fit) {
-  renderDrawing(); fillDetails(); fillRoad(); drawRoad(); drawPlan(fit); renderIssues();
+  renderDrawing(); fillDetails(); fillRoad(); drawRoad(); drawPlan(fit); renderIssues(); updateEmpty(); markSources();
   $("#emailTo").value = $("#emailTo").value || "";
 }
 async function loadProject(id, fit = true) {
@@ -372,7 +469,7 @@ async function refreshProjectList(selectId) {
 // ---------------------------------------------------------------- wire up
 async function init() {
   state.config = await api("/api/config");
-  $("#version").textContent = "v" + state.config.version;
+  $("#version").textContent = "v" + state.config.version + " · Arizona East Valley";
   L.tileLayer(state.config.tile_url, { maxZoom: 20, maxNativeZoom: 19, attribution: state.config.tile_attribution }).addTo(map);
   $("#citySelect").innerHTML = '<option value="">(none / unincorporated)</option>' + state.config.cities.map(c => `<option>${esc(c)}</option>`).join("");
   $("#countySelect").innerHTML = '<option value="">(unknown)</option>' + state.config.counties.map(c => `<option>${esc(c)}</option>`).join("");
@@ -386,7 +483,9 @@ async function init() {
 
   $("#projectSelect").onchange = (e) => guard(() => loadProject(e.target.value));
   $("#newProject").onclick = () => guard(async () => {
-    const name = prompt("Project name", "") ?? ""; const p = await api("/api/projects", { json: { project_name: name } });
+    const v = await ask("New project", `<label class="f">Project name <input name="name" placeholder="e.g. University Dr pole replacement" required></label>`, "Create");
+    if (!v) return;
+    const p = await api("/api/projects", { json: { project_name: v.name } });
     await refreshProjectList(p.id); await loadProject(p.id);
   });
   $("#dupProject").onclick = () => guard(async () => { const p = await api(`/api/projects/${state.project.id}/duplicate`, { method: "POST" }); await refreshProjectList(p.id); await loadProject(p.id); status("Duplicated"); });
@@ -405,16 +504,23 @@ async function init() {
   $("#addPhase").onclick = () => addPhaseRow(null);
 
   $("#roadForm").onsubmit = (e) => { e.preventDefault(); guard(async () => { if (!state.project.road) throw new Error("Draw the centerline first"); await save({ road: readRoad() }); status("Road saved"); }); };
-  $("#modeWork").onclick = () => setMode(state.mode === "work" ? null : "work", "Click the map where the work is (the center of the poles/equipment).");
-  $("#modeCenterline").onclick = () => { if (state.mode === "centerline") finishCenterline(); else setMode("centerline", "Click points along the street in the direction you want as 'forward'. Extend about 1,500 ft past the work on both ends."); };
-  $("#modeIntersection").onclick = () => setMode(state.mode === "intersection" ? null : "intersection", "Click where a cross street meets the centerline.");
+  $("#modeWork").onclick = () => setMode(state.mode === "work" ? null : "work", "Click the center of the poles or equipment.");
+  $("#modeCenterline").onclick = () => { if (state.mode === "centerline") finishCenterline(); else setMode("centerline", "Click along the street in one direction, about 1,500 ft past the work on each end."); };
+  $("#modeIntersection").onclick = () => setMode(state.mode === "intersection" ? null : "intersection", "Click where the cross street meets the road.");
+  $("#modeDone").onclick = () => finishCenterline();
+  $("#modeCancel").onclick = () => { setMode(null); layers.draft.clearLayers(); };
+  const dz = $("#dropZone");
+  ["dragenter", "dragover"].forEach(ev => dz.addEventListener(ev, (e) => { e.preventDefault(); dz.classList.add("over"); }));
+  ["dragleave", "drop"].forEach(ev => dz.addEventListener(ev, (e) => { e.preventDefault(); dz.classList.remove("over"); }));
+  dz.addEventListener("drop", (e) => { const f = e.dataTransfer.files[0]; if (f) { const dt = new DataTransfer(); dt.items.add(f); $("#drawingFile").files = dt.files; $("#drawingFile").dispatchEvent(new Event("change")); } });
   $("#lookupRoad").onclick = () => guard(async () => {
     const c = state.project.work_center; if (!c) throw new Error("Set the work location first");
     status("Looking up road…");
     const r = await api(`/api/road/lookup?lat=${c.lat}&lon=${c.lon}`);
     await save({ road: r.road });
     if (r.schools && r.schools.length && r.schools[0].distance_ft < 600 && !state.project.details.school_zone) {
-      if (confirm(`${r.schools[0].name} is about ${r.schools[0].distance_ft} ft away. Mark this job as in a school zone?`)) {
+      const v = await ask("School nearby", `<p>${esc(r.schools[0].name)} is about ${r.schools[0].distance_ft} ft away. School zones require a police officer.</p><label class="c"><input type="checkbox" name="yes" checked> Mark this job as in a school zone</label>`, "Save");
+      if (v && v.yes) {
         const d = state.project.details; d.school_zone = true; await save({ details: d });
       }
     }

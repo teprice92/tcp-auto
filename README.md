@@ -1,6 +1,9 @@
-# TCP-Auto
+<img src="frontend/logo.svg" width="72" alt="FlagPole logo">
 
-Draft **Traffic Control Plans (TCPs)** from electrical utility design drawings.
+# FlagPole
+
+**Traffic control plans from pole sheets.** FlagPole drafts Traffic Control Plans (TCPs) from
+electrical utility design drawings. (The code package is still named `tcp_auto`.)
 
 Upload a PDF drawing where work is labeled **Construct** / **Remove**. Then confirm the road on a
 map and enter the details the drawing doesn't have. TCP-Auto lays out a draft plan (signs, taper,
@@ -30,6 +33,15 @@ explanation, timeline) or an Outlook email draft to send to the city or county.
 | Report (PDF) and email draft (.eml for Outlook) | Working |
 | LLM assistant | Not yet (placeholder in plan) |
 | Sign-in | Optional shared access key (`TCP_ACCESS_KEY`); invite-only sign-in planned |
+
+## Brand
+
+- **Name:** FlagPole. The utility pole is the work; the flagger's flag is the traffic control.
+- **Logo:** `frontend/logo.svg`. A white utility pole with an orange flag and cone on a blue tile. Works down to 16 px (also used as the favicon).
+- **Colors:** blue is the interface (primary `#0a5cad`, navy `#0b2545`, bright `#1f7ae0`, tint `#eef5fd`).
+  **Orange is reserved for work-zone devices** (cones, signs, work area) so it never competes with buttons on the map.
+  This is an original palette in the spirit of Arizona utilities' blues. It doesn't copy any company's branding.
+- Design tokens live at the top of `frontend/style.css`. The report uses the same palette (`backend/tcp_auto/report/templates/report.html`).
 
 ## Run locally
 

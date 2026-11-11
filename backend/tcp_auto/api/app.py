@@ -34,7 +34,7 @@ TILE_URL = os.environ.get("TCP_TILE_URL", "https://tile.openstreetmap.org/{z}/{x
 TILE_ATTRIBUTION = os.environ.get("TCP_TILE_ATTRIBUTION", "&copy; OpenStreetMap contributors")
 MAX_UPLOAD_MB = 40
 
-app = FastAPI(title="TCP-Auto", version=__version__)
+app = FastAPI(title="FlagPole", version=__version__)
 store = ProjectStore()
 
 

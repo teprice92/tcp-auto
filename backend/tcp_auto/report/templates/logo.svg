@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="FlagPole logo">
+  <title>FlagPole</title>
+  <defs>
+    <linearGradient id="fp-bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1f7ae0"/>
+      <stop offset="1" stop-color="#0b3d78"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="url(#fp-bg)"/>
+  <!-- power line -->
+  <path d="M6 22 Q20 27 32 21 Q44 15 58 20" fill="none" stroke="#9cc7f5" stroke-width="1.6" stroke-linecap="round" opacity=".8"/>
+  <!-- utility pole -->
+  <rect x="29.5" y="14" width="5" height="38" rx="1.5" fill="#ffffff"/>
+  <rect x="17" y="18" width="30" height="4.5" rx="1.5" fill="#ffffff"/>
+  <circle cx="20" cy="16.5" r="2.2" fill="#ffffff"/>
+  <circle cx="44" cy="16.5" r="2.2" fill="#ffffff"/>
+  <!-- flagger flag -->
+  <path d="M34.5 27 L50 31.5 L34.5 36 Z" fill="#ff7a1a"/>
+  <!-- cone at the base -->
+  <path d="M13 52 L17.2 38 L19.8 38 L24 52 Z" fill="#ff7a1a"/>
+  <rect x="15.6" y="44" width="5.8" height="2.2" fill="#ffffff"/>
+  <rect x="10.5" y="51" width="16" height="3" rx="1" fill="#ffffff"/><rect x="26" y="51" width="13" height="3" rx="1" fill="#ffffff" opacity=".55"/>
+</svg>

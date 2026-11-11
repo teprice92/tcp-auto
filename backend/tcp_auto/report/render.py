@@ -26,6 +26,8 @@ TEMPLATE_LABELS = {
 }
 OWNER_LABELS = {"city": "City/Town", "county": "County", "ADOT": "ADOT (state highway)", "tribal": "Tribal", "unknown": "Unknown"}
 
+LOGO_SVG = (TEMPLATES / "logo.svg").read_text(encoding="utf-8")
+
 _env = Environment(loader=FileSystemLoader(str(TEMPLATES)), autoescape=select_autoescape(["html"]))
 _env.filters["dayname"] = lambda i: DAYS[int(i)]
 
@@ -59,6 +61,7 @@ def render_html(project: Project) -> str:
         owner_label=OWNER_LABELS.get(d.road_owner, d.road_owner),
         today=date.today().strftime("%b %d, %Y"),
         version=__version__,
+        logo=LOGO_SVG,
     )
 
 

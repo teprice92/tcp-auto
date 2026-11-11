@@ -13,9 +13,9 @@ import math
 from ..geo import Centerline
 from ..models import DeviceType, LatLon, ProjectDetails, RoadContext, TcpPlan
 
-W, H = 1000, 430
+W, H = 1000, 370
 MARGIN_X = 40
-ROAD_Y = 215  # screen y of the centerline
+ROAD_Y = 182  # screen y of the centerline
 
 
 def _esc(s: str) -> str:
@@ -51,18 +51,18 @@ def render_plan_svg(plan: TcpPlan, road: RoadContext, details: ProjectDetails) -
         '<pattern id="hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">'
         '<rect width="8" height="8" fill="#fde3c4"/><line x1="0" y1="0" x2="0" y2="8" stroke="#f07c1b" stroke-width="3"/></pattern>'
         "</defs>",
-        f'<rect x="0" y="0" width="{W}" height="{H}" fill="#f4f1ea"/>',
+        f'<rect x="0" y="0" width="{W}" height="{H}" fill="#f5f8fb"/>',
     ]
 
     # Cross streets
     for ix in road.intersections:
         if s_min <= ix.station_ft <= s_max:
             x = X(ix.station_ft)
-            out.append(f'<rect x="{x - 22:.1f}" y="10" width="44" height="{H - 20}" fill="#cfcac0"/>')
+            out.append(f'<rect x="{x - 22:.1f}" y="10" width="44" height="{H - 20}" fill="#cfd6df"/>')
             out.append(f'<text x="{x + 4:.1f}" y="24" font-size="11" fill="#444" transform="rotate(90 {x + 4:.1f} 24)">{_esc(ix.cross_street)}{" (signal)" if ix.signalized else ""}</text>')
 
     # Sidewalk/shoulder strips and road
-    out.append(f'<rect x="{MARGIN_X - 20}" y="{Y(left_edge) - 26:.1f}" width="{W - 2 * MARGIN_X + 40}" height="{road_w * sy + 52:.1f}" fill="#e2ded4"/>')
+    out.append(f'<rect x="{MARGIN_X - 20}" y="{Y(left_edge) - 26:.1f}" width="{W - 2 * MARGIN_X + 40}" height="{road_w * sy + 52:.1f}" fill="#e3e8ee"/>')
     out.append(f'<rect x="{MARGIN_X - 20}" y="{Y(left_edge):.1f}" width="{W - 2 * MARGIN_X + 40}" height="{road_w * sy:.1f}" fill="#6b6f74"/>')
     lanes_total = int(round(road_w / w))
     for k in range(1, lanes_total):

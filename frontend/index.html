@@ -3,137 +3,174 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>TCP-Auto</title>
+<title>FlagPole – Traffic control plans</title>
+<link rel="icon" href="/static/logo.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/static/vendor/leaflet/leaflet.css">
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
 <header class="top">
-  <div class="brand">TCP-Auto <span class="muted" id="version"></span></div>
+  <a class="brand" href="/" aria-label="FlagPole home">
+    <img src="/static/logo.svg" alt="">
+    <div><div class="name">FlagPole</div><div class="tagline">Traffic control plans from pole sheets</div></div>
+  </a>
   <div class="proj">
     <select id="projectSelect" aria-label="Project"></select>
-    <button id="newProject">New</button>
-    <button id="dupProject" title="Copy this project as a starting point">Duplicate</button>
+    <button id="newProject" class="btn" title="Start a new project">+ New</button>
+    <button id="dupProject" class="btn" title="Copy this project as a starting point">Duplicate</button>
   </div>
-  <div class="status" id="status"></div>
+  <div class="spacer"></div>
+  <span class="ver" id="version"></span>
 </header>
 
 <main>
   <aside id="panel">
-    <details open id="step-drawing">
-      <summary>1. Drawing</summary>
-      <label class="file">Upload design PDF <input type="file" id="drawingFile" accept="application/pdf"></label>
-      <div id="drawingInfo" class="muted"></div>
-      <div id="sheetWrap" class="sheet hidden"><img id="sheetImg" alt="Drawing page"><div id="sheetDots"></div></div>
-      <div class="hint">Click the drawing to add a missed item. Untick items that aren't real work.</div>
-      <ul id="itemList" class="items"></ul>
-    </details>
-
-    <details id="step-details">
-      <summary>2. Details &amp; timeline</summary>
-      <form id="detailsForm" class="form">
-        <label>Project name <input name="project_name"></label>
-        <label>Job / work order # <input name="job_number"></label>
-        <label>Permit # <input name="permit_number"></label>
-        <label>Utility name <input name="utility_name"></label>
-        <label class="wide">Description of work <input name="description" placeholder="e.g. replace two poles and transfer conductors"></label>
-        <label class="wide">Address / location <input name="address"></label>
-        <label>Road owner
-          <select name="road_owner"><option value="city">City / town</option><option value="county">County (unincorporated)</option><option value="ADOT">ADOT (state route)</option><option value="tribal">Tribal land</option><option value="unknown">Unknown</option></select>
+    <details class="step" open id="step-drawing">
+      <summary><span class="num">1</span><span class="title">Drawing</span><span class="chip" data-chip="drawing">No drawing</span></summary>
+      <div class="body">
+        <label class="drop" id="dropZone">
+          <span>Drop the design PDF here or click to browse</span>
+          <small>Labels with "Construct" or "Remove" are found automatically</small>
+          <input type="file" id="drawingFile" accept="application/pdf">
         </label>
-        <label>City / town <select name="city" id="citySelect"></select></label>
-        <label>County <select name="county" id="countySelect"></select></label>
-        <label>Work position
-          <select name="work_position"><option value="lane">Travel lane closed</option><option value="shoulder">Shoulder / parking lane only</option></select>
-        </label>
-        <label>Side of road
-          <select name="side"><option value="right">Right of drawn direction</option><option value="left">Left of drawn direction</option></select>
-        </label>
-        <label>Trucks <input name="trucks" type="number" min="1" max="6"></label>
-        <label class="check"><input type="checkbox" name="school_zone"> School zone</label>
-        <label class="check"><input type="checkbox" name="near_residential"> Within 500 ft of homes</label>
-        <label class="check"><input type="checkbox" name="police_requested"> Request police officer</label>
-        <label class="check"><input type="checkbox" name="reduced_speed_requested"> Reduced speed zone</label>
-        <label class="check"><input type="checkbox" name="pedestrian_detour"> Close sidewalk</label>
-        <fieldset class="wide"><legend>Timeline</legend>
-          <table class="phases"><thead><tr><th>Phase</th><th>Start</th><th>End</th><th>From</th><th>To</th><th>Days</th><th></th></tr></thead><tbody id="phaseRows"></tbody></table>
-          <button type="button" id="addPhase">Add phase</button>
-        </fieldset>
-        <fieldset class="wide"><legend>Contacts</legend>
-          <label>Prepared by <input name="c.preparer"></label>
-          <label>Phone <input name="c.preparer_phone"></label>
-          <label>Field supervisor <input name="c.field_supervisor"></label>
-          <label>Phone <input name="c.field_supervisor_phone"></label>
-          <label>24-hr emergency <input name="c.emergency_contact"></label>
-          <label>Phone <input name="c.emergency_phone"></label>
-          <label class="wide">Traffic control company <input name="c.traffic_control_company"></label>
-        </fieldset>
-        <label class="wide">Notes <textarea name="notes" rows="2"></textarea></label>
-        <button type="submit" class="primary wide">Save details</button>
-      </form>
-      <div id="rulesPreview" class="rules muted"></div>
+        <div id="drawingInfo" class="hint"></div>
+        <div id="sheetWrap" class="sheet hidden" title="Click to add a missed item"><img id="sheetImg" alt="Drawing page with found work items marked"><div id="sheetDots"></div></div>
+        <ul id="itemList" class="items"></ul>
+      </div>
     </details>
 
-    <details id="step-road">
-      <summary>3. Road &amp; location</summary>
-      <div class="buttons">
-        <input id="geoQuery" placeholder="Find address…"><button id="geoBtn">Find</button>
+    <details class="step" id="step-details">
+      <summary><span class="num">2</span><span class="title">Details &amp; timeline</span><span class="chip" data-chip="details">To do</span></summary>
+      <div class="body">
+        <form id="detailsForm" class="form">
+          <label class="wide">Project name <input name="project_name" placeholder="e.g. University Dr pole replacement"></label>
+          <label>Job / work order # <input name="job_number"></label>
+          <label>Permit # <input name="permit_number"></label>
+          <label class="wide">Description of work <input name="description" placeholder="e.g. replace two poles and transfer conductors"></label>
+          <label class="wide">Address / location <input name="address"></label>
+          <label>Road owner
+            <select name="road_owner"><option value="city">City / town</option><option value="county">County (unincorporated)</option><option value="ADOT">ADOT (state route)</option><option value="tribal">Tribal land</option><option value="unknown">Unknown</option></select>
+          </label>
+          <label>City / town <select name="city" id="citySelect"></select></label>
+          <label>County <select name="county" id="countySelect"></select></label>
+          <label>Utility name <input name="utility_name"></label>
+          <label>Work position
+            <select name="work_position"><option value="lane">Travel lane closed</option><option value="shoulder">Shoulder / parking lane only</option></select>
+          </label>
+          <label>Side of road
+            <select name="side"><option value="right">Right of drawn direction</option><option value="left">Left of drawn direction</option></select>
+          </label>
+          <label>Trucks <input name="trucks" type="number" min="1" max="6"></label>
+          <label class="check"><input type="checkbox" name="school_zone"> School zone</label>
+          <label class="check"><input type="checkbox" name="near_residential"> Within 500 ft of homes</label>
+          <label class="check"><input type="checkbox" name="police_requested"> Request police officer</label>
+          <label class="check"><input type="checkbox" name="reduced_speed_requested"> Reduced speed zone</label>
+          <label class="check"><input type="checkbox" name="pedestrian_detour"> Close sidewalk</label>
+          <fieldset><legend>Timeline</legend>
+            <table class="phases"><thead><tr><th>Phase</th><th>Start</th><th>End</th><th>From</th><th>To</th><th>Days</th><th></th></tr></thead><tbody id="phaseRows"></tbody></table>
+            <button type="button" id="addPhase">+ Add phase</button>
+          </fieldset>
+          <fieldset><legend>Contacts</legend>
+            <label>Prepared by <input name="c.preparer"></label>
+            <label>Phone <input name="c.preparer_phone" inputmode="tel"></label>
+            <label>Field supervisor <input name="c.field_supervisor"></label>
+            <label>Phone <input name="c.field_supervisor_phone" inputmode="tel"></label>
+            <label>24-hr emergency <input name="c.emergency_contact"></label>
+            <label>Phone <input name="c.emergency_phone" inputmode="tel"></label>
+            <label class="wide" style="grid-column:1/-1">Traffic control company <input name="c.traffic_control_company"></label>
+          </fieldset>
+          <label class="wide">Notes <textarea name="notes" rows="2"></textarea></label>
+          <div class="sub-cta"><button type="submit" class="primary">Save details</button></div>
+        </form>
+        <div id="rulesPreview" class="issues"></div>
       </div>
-      <div class="buttons">
-        <button id="modeWork">Set work location</button>
-        <button id="modeCenterline">Draw road centerline</button>
-        <button id="lookupRoad" title="Needs internet access to OpenStreetMap">Look up road (OSM)</button>
-      </div>
-      <div class="hint" id="modeHint"></div>
-      <form id="roadForm" class="form">
-        <label class="wide">Street name <input name="name"></label>
-        <label>Posted speed (mph) <input name="speed_mph" type="number" min="15" max="75" step="5"></label>
-        <label class="check"><input type="checkbox" name="speed_confirmed"> Speed confirmed</label>
-        <label>Road class <select name="road_class"><option>local</option><option>collector</option><option>arterial</option><option>highway</option></select></label>
-        <label>Lane width (ft) <input name="lane_width_ft" type="number" min="9" max="16"></label>
-        <label>Lanes in drawn direction <input name="lanes_forward" type="number" min="0" max="5"></label>
-        <label>Lanes opposite <input name="lanes_backward" type="number" min="0" max="5"></label>
-        <label class="check"><input type="checkbox" name="one_way"> One-way</label>
-        <label class="check"><input type="checkbox" name="has_bike_lane"> Bike lane</label>
-        <label class="check"><input type="checkbox" name="has_sidewalk"> Sidewalk</label>
-        <fieldset class="wide"><legend>Intersections</legend>
-          <ul id="intList" class="items"></ul>
-          <button type="button" id="modeIntersection">Add intersection on map</button>
-        </fieldset>
-        <div id="roadSources" class="muted wide"></div>
-        <button type="submit" class="primary wide">Save road</button>
-      </form>
     </details>
 
-    <details id="step-plan">
-      <summary>4. Plan &amp; edit</summary>
-      <button id="generate" class="primary">Generate draft plan</button>
-      <div class="palette" id="palette">
-        <span class="muted">Add:</span>
-        <button data-type="sign">Sign</button><button data-type="cone">Cone</button><button data-type="drum">Drum</button>
-        <button data-type="barricade3">Barricade</button><button data-type="arrow_board">Arrow board</button>
-        <button data-type="flagger">Flagger</button><button data-type="police">Police</button><button data-type="light_tower">Light tower</button>
-        <button id="deleteDevice" class="danger" disabled>Delete selected</button>
+    <details class="step" id="step-road">
+      <summary><span class="num">3</span><span class="title">Road &amp; location</span><span class="chip" data-chip="road">To do</span></summary>
+      <div class="body">
+        <div class="row"><input id="geoQuery" placeholder="Find an address or intersection…" aria-label="Find address"><button id="geoBtn">Find</button></div>
+        <div class="row">
+          <button id="modeWork">📍 Set work location</button>
+          <button id="modeCenterline">〰 Draw road</button>
+          <button id="lookupRoad" title="Needs internet access to OpenStreetMap">Look up road</button>
+        </div>
+        <form id="roadForm" class="form">
+          <label class="wide">Street name <input name="name"></label>
+          <label>Posted speed (mph) <input name="speed_mph" type="number" min="15" max="75" step="5"></label>
+          <label class="check"><input type="checkbox" name="speed_confirmed"> Speed confirmed in the field</label>
+          <label>Road class <select name="road_class"><option>local</option><option>collector</option><option>arterial</option><option>highway</option></select></label>
+          <label>Lane width (ft) <input name="lane_width_ft" type="number" min="9" max="16"></label>
+          <label>Lanes in drawn direction <input name="lanes_forward" type="number" min="0" max="5"></label>
+          <label>Lanes opposite <input name="lanes_backward" type="number" min="0" max="5"></label>
+          <label class="check"><input type="checkbox" name="one_way"> One-way</label>
+          <label class="check"><input type="checkbox" name="has_bike_lane"> Bike lane</label>
+          <label class="check"><input type="checkbox" name="has_sidewalk"> Sidewalk</label>
+          <fieldset><legend>Intersections</legend>
+            <ul id="intList" class="items"></ul>
+            <button type="button" id="modeIntersection">+ Add intersection on map</button>
+          </fieldset>
+          <div id="roadSources" class="hint wide"></div>
+          <div class="sub-cta"><button type="submit" class="primary">Save road</button></div>
+        </form>
       </div>
-      <div class="hint">Drag devices on the map. Checks update after each move.</div>
-      <h3>Checks</h3><ul id="issues" class="issues"></ul>
-      <h3>Requirements</h3><ul id="reqs" class="issues"></ul>
-      <h3>Dimensions</h3><div id="dims" class="muted"></div>
     </details>
 
-    <details id="step-report">
-      <summary>5. Report</summary>
-      <div class="buttons">
-        <button id="previewReport">Preview</button>
-        <button id="pdfReport" class="primary">Download PDF</button>
-        <button id="emlReport">Email draft (Outlook)</button>
+    <details class="step" id="step-plan">
+      <summary><span class="num">4</span><span class="title">Plan &amp; edit</span><span class="chip" data-chip="plan">Not generated</span></summary>
+      <div class="body">
+        <button id="generate" class="primary big" style="width:100%">Generate draft plan</button>
+        <div id="summary" class="summary"></div>
+        <div class="palette" id="palette" aria-label="Add devices">
+          <button data-type="sign"><span class="ico"><span class="dv dv-sign" style="width:12px;height:12px"></span></span>Sign</button>
+          <button data-type="cone"><span class="ico"><span class="dv dv-cone"></span></span>Cone</button>
+          <button data-type="drum"><span class="ico"><span class="dv dv-drum"></span></span>Drum</button>
+          <button data-type="barricade3"><span class="ico"><span class="dv dv-barricade3"></span></span>Barricade</button>
+          <button data-type="arrow_board"><span class="ico"><span class="dv dv-arrow_board">➤</span></span>Arrow board</button>
+          <button data-type="flagger"><span class="ico"><span class="dv dv-flagger" style="width:18px;height:18px">F</span></span>Flagger</button>
+          <button data-type="police"><span class="ico"><span class="dv dv-police" style="width:18px;height:18px">P</span></span>Police</button>
+          <button data-type="light_tower"><span class="ico"><span class="dv dv-light_tower"></span></span>Light tower</button>
+        </div>
+        <div class="actions"><button id="deleteDevice" class="danger" disabled>Delete selected</button><span class="hint">Drag devices on the map. Checks update after each move.</span></div>
+        <h3>Checks</h3><ul id="issues" class="issues"></ul>
+        <h3>Requirements</h3><ul id="reqs" class="issues"></ul>
+        <h3>Dimensions</h3><div id="dims" class="dims"></div>
       </div>
-      <label class="wide">Send to <input id="emailTo" placeholder="permit office email"></label>
-      <div class="hint">The email draft opens in Outlook with the PDF attached. Review and send from your mailbox.</div>
+    </details>
+
+    <details class="step" id="step-report">
+      <summary><span class="num">5</span><span class="title">Report</span><span class="chip" data-chip="report">Waiting for plan</span></summary>
+      <div class="body">
+        <div class="report-actions">
+          <button id="previewReport">Preview</button>
+          <button id="pdfReport" class="primary">Download PDF</button>
+          <button id="emlReport">Email draft</button>
+        </div>
+        <div class="form"><label class="wide">Send to <input id="emailTo" type="email" placeholder="permit office email"></label></div>
+        <div class="hint">The email draft opens in Outlook with the PDF attached. Review it and send from your own mailbox.</div>
+      </div>
     </details>
   </aside>
-  <div id="map"></div>
+
+  <div class="mapwrap">
+    <div id="map" aria-label="Map"></div>
+    <div id="modebar" class="modebar hidden" role="status"><span id="modeText"></span><button id="modeDone" class="hidden">Finish</button><button id="modeCancel">Cancel</button></div>
+    <div id="empty" class="empty hidden"><div class="card"><img src="/static/logo.svg" alt=""><h2>Let's place the job</h2><p>Use <b>Set work location</b> and <b>Draw road</b> in step 3, or search for an address. The draft plan appears here.</p></div></div>
+    <div class="legend" id="legend" aria-label="Legend">
+      <div><span class="k"><span class="dv dv-cone"></span></span>Cone</div>
+      <div><span class="k"><span class="dv dv-drum"></span></span>Drum</div>
+      <div><span class="k"><span class="dv dv-sign" style="width:11px;height:11px"></span></span>Warning sign</div>
+      <div><span class="k"><span class="dv dv-arrow_board" style="width:20px;height:11px"></span></span>Arrow board</div>
+      <div><span class="k"><span class="dv dv-flagger" style="width:16px;height:16px;font-size:9px">F</span></span>Flagger</div>
+      <div><span class="k"><span class="dv dv-police" style="width:16px;height:16px;font-size:9px">P</span></span>Police</div>
+      <div><span class="k"><span style="display:inline-block;width:18px;height:10px;background:#ff7a1a80;border:1px solid #c05800"></span></span>Work area</div>
+      <div><span class="k"><span class="dv dv-light_tower" style="border-bottom-width:11px;border-left-width:6px;border-right-width:6px"></span></span>Light tower</div>
+    </div>
+  </div>
 </main>
+
+<dialog id="dlg"><form method="dialog" id="dlgForm"><h2 id="dlgTitle"></h2><div id="dlgBody"></div><div class="foot"><button value="ok" class="primary" id="dlgOk">OK</button><button value="cancel" formnovalidate>Cancel</button></div></form></dialog>
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
 
 <script src="/static/vendor/leaflet/leaflet.js"></script>
 <script src="/static/app.js"></script>
