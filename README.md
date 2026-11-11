@@ -31,4 +31,8 @@ Planning phase. No code yet.
 - **Users:** one shared tool for designers, engineers, inspectors, schedulers, and construction
   consultants at an electrical utility. No workflow or approval process built in.
 - **Drawings:** v1 assumes work items are labeled "Construct" or "Remove" and sit next to roads.
-- **Platform:** hosted on Azure with Microsoft 365 sign-in; reports can go out as Outlook drafts.
+- **Work types:** mid-block, intersections (including signalized), and night work. Police officers
+  are added per each city's rules; school zones always require one.
+- **Platform:** hosted web app in its own cloud account with invite-only sign-in, so the utility's IT
+  isn't needed to start. Reports go out as email drafts that open in Outlook. Microsoft 365 single
+  sign-on and Outlook/SharePoint integration are optional later.

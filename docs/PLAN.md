@@ -41,7 +41,11 @@ TCP drawings are generated fresh on a real street map.
 - **Report:** no county-mandated format. Must include a **map highlighting the main elements**,
   a **brief explanation**, and a **timeline** (see §3.9).
 - **Missing information** on drawings (dates, hours, speed, contacts, etc.) is entered by the user (see §3.2.1).
-- **Platform:** hosted web app on **Microsoft 365 / Azure**, with Microsoft sign-in (see §5.1).
+- **Work types in scope:** mid-block work, **intersections** (including signalized), and **night work** (see §3.7.1, §3.7.2).
+- **Police officers:** required per each city's traffic rules; **school zones always require an officer** (see §3.6.2).
+- **Platform:** hosted web app that **doesn't need the utility's IT department to get started**.
+  It runs in its own cloud account; Microsoft 365 integration (company sign-in, Outlook drafts,
+  SharePoint) is an optional upgrade once IT is on board (see §5.1).
 
 **Design principle:** deterministic software does the work wherever possible. An **LLM is an
 optional, pluggable assistant** (placeholder at first) for the fuzzy parts: reading notes,
@@ -70,7 +74,7 @@ flowchart LR
     G --> H[Layout generator<br/>draft TCP geometry]
     H --> I[Drag-and-drop editor<br/>on OSM street map]
     I --> J[TCP report<br/>PDF + map figures + narrative]
-    J --> K[Outlook draft to agency<br/>or download PDF]
+    J --> K[Email draft to agency<br/>or download PDF]
 
     L[[LLM assistant<br/>placeholder]] -.-> C
     L -.-> E
@@ -141,9 +145,11 @@ enters or corrects the rest. Every field shows a source badge: `from drawing`, `
 |---|---|
 | Job | Work order / job #, permit #, project name, utility circuit/feeder, description of work (e.g., "Replace 2 poles and transfer conductors") |
 | Location | Address or intersection, city/unincorporated area (auto-detected, see §3.6.1), side of road, map pin |
-| Road | Posted speed (**must be confirmed**), lanes, divided/undivided, one-way, bike lane, sidewalk, nearby signals |
+| Road | Posted speed (**must be confirmed**), lanes, divided/undivided, one-way, bike lane, sidewalk |
+| Intersection | Work in or near an intersection? (auto-detected), signalized or stop-controlled, which legs/lanes affected, turn movements to restrict |
+| School zone | Inside or near a school zone? (auto-detected, user confirms), school name, school hours |
 | Equipment | Number and type of trucks (default: 2 large trucks), need for crane/digger, material staging |
-| Timeline | Start date, end date or duration, daily work hours, days of week, night work?, phases (see §3.9) |
+| Timeline | Start date, end date or duration, daily work hours, days of week, phases (see §3.9). **Night work** is detected automatically from the hours (sunset to sunrise) |
 | Traffic control | Flaggers (count), police officer requested/required, reduced speed requested, pedestrian detour needed |
 | Contacts | Designer/preparer, field supervisor, 24-hour emergency contact, traffic control contractor |
 
@@ -188,6 +194,12 @@ Use **OpenStreetMap** (Overpass API / osmnx) by default, with optional state DOT
 - Number of lanes, lane width, one-way, median/divided.
 - Road classification (local / collector / arterial / highway), urban vs rural.
 - Nearby intersections, driveways, crosswalks, bike lanes, sidewalks (pedestrian accommodation).
+- **Intersections inside or near the work zone**: OSM nodes where roads meet, plus traffic signals
+  (`highway=traffic_signals`) and stop signs. City signal inventories (often open data) are a more
+  reliable source for signals where available.
+- **School zones**: schools from OSM (`amenity=school`) and city school-zone GIS layers where
+  published. The app flags work within a set distance of a school or inside a mapped school zone,
+  and the user confirms it.
 - **Optional:** AADT/traffic volume from the state DOT. This drives flagger, police, and work-hour rules.
 
 Every value shows in the UI with its source and can be overridden. **Speed is the single most
@@ -237,9 +249,9 @@ TA-6 shoulder work with minor encroachment, TA-10 lane closure on a two-lane roa
 TA-22 lane closure near an intersection, TA-33 stationary lane closure on a divided highway.
 
 **Jurisdiction-specific rules** (examples of what the YAML must be able to express):
-- **Police detail / law enforcement required** when, for example: road class ≥ arterial, speed ≥ X mph,
-  signalized intersection inside the zone, lane closure on a state route, or certain volumes or hours.
-  Many cities and counties make this a permit condition.
+- **Police officer required** when, for example: **work in a school zone** (known requirement, see
+  §3.6.2), signalized intersection inside the zone, road class ≥ arterial, speed ≥ X mph, lane closure
+  on a state route, night work, or certain volumes or hours. Each city's traffic rules define the triggers.
 - Allowed **work hours** and lane-closure windows (peak-hour restrictions).
 - **Reduced speed zone** rules: when a work-zone speed limit may be posted, by how much,
   sign types (e.g., `R2-1` speed limit, `W3-5` reduced speed ahead), fines-doubled signage.
@@ -259,10 +271,16 @@ submittal:
 rules:
   police_required:
     any:
+      - school_zone: true                  # known requirement; verify wording per agency
+      - signalized_intersection_in_zone: true
       - road_class: [arterial]
       - speed_mph: { gte: 45 }
-      - signalized_intersection_in_zone: true
+    during: work_hours                     # or: school_hours for the school-zone trigger
     citation: "PLACEHOLDER - verify against MCDOT permit conditions"
+  night_work:
+    allowed: true
+    requires: [lighting_plan, noise_permit]   # placeholder
+    citation: "PLACEHOLDER"
   work_hours:
     lane_closure_allowed: ["09:00-15:00"]  # placeholder
     citation: "PLACEHOLDER"
@@ -306,8 +324,9 @@ Source documents to obtain and encode (verify the current edition and exact titl
 
 Arizona-specific rule topics to capture:
 - Peak-hour lane-closure restrictions on arterials (common in metro Phoenix cities). Exact hours vary by agency.
-- When **off-duty police officers** are required (e.g., signalized intersections, arterials, high speed).
-  This varies by city and must come from each agency's documents.
+- When **off-duty police officers** are required. These are outlined in each city's traffic rules
+  (see §3.6.2).
+- **Night work** rules: allowed hours, noise ordinance / nighttime work permits, and lighting requirements.
 - Work in or near **signalized intersections**, which often needs separate signal or traffic engineering approval.
 - Pedestrian/ADA accommodation where sidewalks are closed.
 - Report delivery: permit office email or permit portal per agency (stored in the jurisdiction file).
@@ -315,6 +334,27 @@ Arizona-specific rule topics to capture:
 **Pilot order (suggested):** (1) federal + Arizona baseline (works anywhere, with a "local rules
 not loaded" warning), (2) Mesa, Chandler, Gilbert, (3) Tempe, Queen Creek, Apache Junction,
 (4) Maricopa and Pinal county roads, (5) ADOT routes (e.g., US-60, SR-87, SR-202, SR-24).
+
+#### 3.6.2 Police officer requirements
+
+The East Valley cities spell out when an officer is needed in their traffic control rules. Each
+city's file encodes those triggers with citations. Known so far:
+
+- **School zone → police officer required.** The app checks for school zones automatically (§3.5),
+  asks the user to confirm, and if confirmed adds an officer to the plan, the report, and the device
+  counts. Whether the officer is needed only during school hours or for all work hours comes from
+  the city's rule.
+
+Other common triggers to look for when reading each city's rules: signalized intersections,
+arterials, high-speed roads, lane closures that stop traffic, night work, and work near
+special events.
+
+How it shows up in the tool:
+- A clear **"Police officer required"** banner, with the reason and rule citation (e.g., "School zone: Gilbert traffic control manual §x.x").
+- An officer position is placed on the map automatically (e.g., at the intersection or near the
+  school crosswalk). The user can move it.
+- The report explanation and timeline mention when the officer is on site.
+- Users can always add an officer even when no rule requires one.
 
 ### 3.7 Layout generator
 
@@ -333,6 +373,39 @@ Algorithm (linear-referenced along the centerline, per approach direction):
 9. Run the **compliance checker** (same code the editor uses) and attach any warnings.
 
 Everything placed is tagged `generated` with the rule that produced it. User edits are tagged `manual`.
+
+#### 3.7.1 Intersections
+
+Intersection work is in scope from the start. The app picks a template based on where the work
+sits relative to the intersection:
+
+| Work location | Template approach (MUTCD typical applications as reference) |
+|---|---|
+| **Near side** (before the intersection) | Lane closure ending before the intersection; turn lanes may be closed or shifted |
+| **Far side** (after the intersection) | Lane closure begins before the intersection so traffic merges before crossing (e.g., TA-22 style) |
+| **Within the intersection** | Devices around the work area, flaggers or officer directing traffic, possible turn restrictions |
+| **On a side street near the intersection** | Signs on the main road and the side street; closure on the side-street approach |
+
+What the generator adds for intersections:
+- Advance warning signs on **every approach** that leads into the work zone, not just the main road.
+- **Turn restrictions** where a closed lane removes a turn (e.g., `R3-1`/`R3-2` no right/left turn signs), if the user confirms.
+- **Signalized intersections:** a police officer (if the city requires it) and a note about signal
+  timing or turning the signal to flash, which usually needs the city traffic department's approval.
+  The report lists this as an item to coordinate.
+- Crosswalk and pedestrian handling: keep crosswalks open or close them with detour signs and detectable barricades.
+- Checks that tapers and signs don't land inside the intersection or block sight lines.
+
+#### 3.7.2 Night work
+
+When the work hours fall between sunset and sunrise (or the user marks it as night work):
+- **Lighting**: warning lights on channelizing devices and barricades, lit flagger stations, and
+  light towers for the work area. These are added to the map and device counts.
+- **Equipment**: arrow boards and message boards where the rules call for them, and high-visibility
+  apparel notes (e.g., Class 3 for flaggers at night).
+- **Rules**: nighttime work permits and noise ordinance limits per city. The app shows a checklist
+  item when a city needs a permit.
+- **Report**: night hours are shaded in the timeline bar chart, and the explanation mentions
+  lighting and any permits needed.
 
 ### 3.8 Drag-and-drop editor
 
@@ -389,7 +462,8 @@ project, such as a scheduler, can fill it in.
 - Phases, default set: **mobilize & set up traffic control → work → remove traffic control & demobilize**.
   Users can add phases (e.g., "Day 1: set poles", "Day 2: transfer conductors") or a per-day breakdown.
 - Each phase has dates, daily hours, which traffic control layout is active, and the flagger/police needs.
-- Checks: lane closures outside allowed hours, weekend or holiday work, night work needing lighting.
+- Checks: lane closures outside allowed hours, weekend or holiday work, **school hours** in school
+  zones (officer needed), and **night work** (lighting and permits; night hours shaded on the chart).
 - Shown as a simple bar chart in the report and an editable timeline in the app.
 - Different layouts per phase are supported (e.g., shoulder closure on day 1, lane closure on day 2).
 
@@ -405,10 +479,12 @@ project, such as a scheduler, can fill it in.
 
 **Sending it**
 - **Download PDF** is always available.
-- **"Email to agency"** creates an **Outlook draft** (via Microsoft Graph) addressed to the right
-  permit office (from the jurisdiction file), with a short cover message and the PDF attached.
-  The user reviews and sends it from their own mailbox, so it comes from them and stays in their Sent items.
-- Optional: save the PDF to a **SharePoint/OneDrive** folder the team already uses.
+- **"Email to agency" (works without IT):** the app downloads an **email draft file (`.eml`)** that
+  already has the recipient (from the jurisdiction file), subject, a short cover message, and the PDF
+  attached, with the `X-Unsent: 1` header. Opening it in Outlook shows it as a new message ready to review and send from the user's
+  own mailbox. A simpler `mailto:` link is the fallback (it opens a pre-filled email, and the user attaches the PDF).
+- **Later, with IT approval:** create the Outlook draft directly in the user's mailbox (Microsoft
+  Graph) and save PDFs to a SharePoint/OneDrive folder.
 - Optional attachments: KML/GeoJSON of the layout (reviewers can open it in Google Earth or GIS),
   and an editable DOCX version if an agency asks for one.
 - No approval tracking in the app; replies come back to the user's inbox as usual.
@@ -434,11 +510,17 @@ Only two permission levels:
 
 | Level | Who | Can do |
 |---|---|---|
-| **Member** | Utility staff (signed in with their Microsoft 365 account) and invited consultants | Everything above |
+| **Member** | Utility staff and invited consultants | Everything above |
 | **Admin** | A few designated people | Manage users and invites, edit jurisdiction rule files, keyword list, and report branding |
 
-Outside consultants are invited as **guests** in the utility's Microsoft tenant (Entra B2B), so they
-sign in with their own work account. Optionally, guests see only projects shared with them.
+**Sign-in without IT:** an admin invites people by email. They sign in with an **email link
+(passwordless)** or email + password, through a hosted sign-in service. Optionally, offer
+"Sign in with Microsoft" using only basic profile permissions; many organizations allow that without
+admin approval, but if the utility blocks it, email sign-in still works. Consultants sign in the same way.
+Optionally, consultants see only projects shared with them.
+
+**Later, with IT approval:** switch to company single sign-on (Entra ID, limited to the utility's
+tenant or a security group) so access follows employee accounts automatically.
 
 The app keeps a simple **change history** (who changed what, when) on each plan, so anyone can see
 and restore earlier versions.
@@ -487,25 +569,33 @@ Rules for the LLM:
 | Jobs | Background worker (RQ/Celery or FastAPI BackgroundTasks to start) | PDF processing can be slow |
 | Database | **PostgreSQL + PostGIS** (SQLite for local dev) | Spatial queries, versioning |
 | File storage | Local disk → **Azure Blob Storage** | Uploaded PDFs, exports |
-| Auth & email | **Microsoft Entra ID** (OIDC via MSAL), **Microsoft Graph** (Outlook drafts, SharePoint) | Fits Microsoft 365; no new passwords |
+| Auth | Hosted sign-in service (e.g., Azure AD B2C/Entra External ID, Auth0, or Clerk): email link + optional "Sign in with Microsoft" | Works without utility IT; can switch to company SSO later |
+| Email | `.eml` draft download (Python `email` library), `mailto:` fallback; Microsoft Graph later | Outlook-friendly with no IT setup |
 | Frontend | **React + TypeScript + Vite**, **MapLibre GL JS**, dnd-kit for palette | Drag-and-drop on a real map |
 | Basemap | OSM data via hosted tile provider or self-hosted PMTiles; Nominatim geocoding | Free, editable street data; no CAD base needed |
 | Report export | HTML/CSS templates (Jinja2) → PDF via Playwright; map figures rendered headless | Emailable, styled reports with maps; easy per-county templates |
 | Testing | pytest (golden-file tests per sample plan), Vitest, Playwright E2E | Regressions in geometry are subtle |
 
-### 5.1 Hosting and security (Microsoft 365 / Azure)
+### 5.1 Hosting and security (no IT required to start)
 
-- **Hosted on Azure**, in the utility's own tenant/subscription if IT prefers:
+**Start:** host in a **separate cloud account owned by the project** (Azure suggested, since it moves
+easily into the utility's Microsoft environment later). No changes to the utility's systems, no admin
+approvals, no access to company email or files.
+
+**Later, with IT approval (optional):** move to the utility's own Azure subscription, switch to
+company single sign-on, and turn on Outlook/SharePoint integration. The app is designed so these are
+configuration changes, not a rebuild.
+
+- **Azure services:**
   - Azure Container Apps (or App Service) for the web app, API, and background worker
   - Azure Database for PostgreSQL (Flexible Server) with PostGIS
   - Azure Blob Storage for drawings and reports
   - Azure Key Vault for secrets
-- **Sign-in with Microsoft 365** (Entra ID single sign-on). Staff use their normal work account;
-  consultants are invited as Entra guests. Access can be limited to a security group.
-- **Outlook and SharePoint integration** through Microsoft Graph, with delegated permissions so the
-  app acts as the signed-in user (drafts in their mailbox, files in folders they can already access).
-- Utility drawings show grid infrastructure, which is **sensitive**: encrypt in transit and at rest,
-  keep change history, and set data retention. Don't send drawings to an outside LLM provider without
+- **Sign-in:** invite-only email sign-in to start (§3.10). Company SSO later.
+- **Email:** `.eml` drafts the user opens in Outlook. Direct Outlook/SharePoint integration later.
+- Utility drawings show grid infrastructure, which is **sensitive**: invite-only access, encrypt in
+  transit and at rest, keep change history, and set data retention. Even without formal IT
+  involvement, check that storing drawings in a separate cloud account fits company data policy. Don't send drawings to an outside LLM provider without
   approval from the utility's security team (§4 can stay disabled, or use a model hosted in the
   utility's Azure tenant if approved).
 - Environments: dev and production (staging later if needed). Daily backups.
@@ -527,8 +617,8 @@ tcp-auto/
       report/        # narrative templates, map figure rendering, PDF report, email package
       export/        # GeoJSON/KML/JSON
       timeline/      # phases, work-hour checks
-      auth/          # Entra ID sign-in, member/admin, guest sharing
-      msgraph/       # Outlook drafts, SharePoint/OneDrive upload
+      auth/          # invite-only sign-in, member/admin; company SSO later
+      email/         # .eml draft builder; Microsoft Graph integration later
       api/           # FastAPI routes
     tests/
   frontend/          # React editor
@@ -559,10 +649,11 @@ tcp-auto/
 | **1. Ingestion MVP** | Vector PDF → PageModel, scale detection, **"Construct"/"Remove" keyword extraction**, click to add/remove items | Finds the labeled items on test drawings (synthetic until samples arrive) |
 | **2. Location + site** | Address geocoding + manual pin, OSM road lookup, centerpoint/extent, 250 ft minimum | Centerpoint within ~25 ft of the reference on samples |
 | **3. Rules engine** | Federal baseline + Arizona + Maricopa/Pinal county roads, road-owner detection, citations, police/flagger/speed/hours rules | Unit tests reproduce MUTCD tables and formulas; road owner correct on sample locations |
-| **4. Layout generator** | 4–5 typical applications (shoulder, 2-lane flagger, multilane lane closure, intersection) | Generated drafts pass compliance checks and match reference layouts |
+| **4. Layout generator** | Mid-block templates (shoulder, 2-lane flagger, multilane lane closure), **intersection** templates (near side, far side, within, side street; signalized), **night work** additions, **police officer** placement incl. school zones | Generated drafts pass compliance checks and match reference layouts |
 | **5. Editor** | Map editor, palette, snapping, live compliance, versions | Consultant can fix a draft in < 15 min |
 | **6. TCP report + timeline** | Emailable PDF: highlighted TCP map, brief explanation, timeline; optional appendices; email draft + KML | Accepted by Maricopa/Pinal reviewers as an approval submittal |
-| **6b. Microsoft 365** | Entra ID sign-in, guest invites, Outlook draft with PDF, optional SharePoint save, Azure deployment | Staff and a consultant can sign in, make a plan, and email it from Outlook |
+| **6b. Hosting & sign-in** | Azure deployment in a project-owned account, invite-only email sign-in, `.eml` email drafts | Staff and a consultant can sign in, make a plan, and email it from Outlook, with no IT involvement |
+| **6c. Microsoft 365 (optional, when IT agrees)** | Company SSO, Outlook drafts via Graph, SharePoint save, move to utility Azure | Configuration change only |
 | **7. LLM integration** | Real provider behind `PlanAssistant` for notes, ambiguous symbols, centerpoint, review | Measurable lift over heuristics on samples, with human confirmation |
 | **8. Scale-out** | More jurisdictions, raster/OCR improvements, multi-zone/detours, DXF | Driven by customer demand |
 
@@ -570,7 +661,8 @@ tcp-auto/
 gaps) → address/manual pin → OSM speed/lanes → federal + Arizona rules → TA-10 (two-lane, flagger)
 layout → shown read-only on an OSM map → **basic PDF report** (highlighted map + brief explanation +
 timeline). Use a location on a Mesa, Chandler, or Gilbert street and a test drawing labeled
-"Construct"/"Remove". This gives an emailable result early; editing and Microsoft 365 sign-in come next.
+"Construct"/"Remove". This gives an emailable result early. Next: intersections, night work,
+school-zone police rule, editing, and hosting with email sign-in.
 
 ---
 
@@ -599,13 +691,14 @@ timeline). Use a location on a Mesa, Chandler, or Gilbert street and a test draw
 | Drawings | Assume work items are labeled with some form of "Construct" or "Remove" and are next to roads |
 | Report format | No required format; highlighted map + brief explanation + timeline |
 | Missing drawing info | Entered by the user in the project details form |
-| Platform | Hosted web app on Azure with Microsoft 365 sign-in and Outlook integration |
+| Work types | Mid-block, intersections (incl. signalized), and night work |
+| Police officers | Per each city's traffic rules; school zones always require one |
+| Platform | Hosted web app in a project-owned cloud account (Azure suggested); no IT needed to start; Microsoft 365 integration optional later |
 
 **Still open**
 
 1. **Sample drawings:** a few real (sanitized) PDFs to confirm the "Construct"/"Remove" assumption and tune the keyword list.
-2. **Police officers:** do you know when East Valley cities require off-duty officers?
-3. **LLM use:** will the utility's security team allow sending drawing excerpts to an LLM provider
-   (or one hosted in the utility's Azure tenant), or should the assistant stay disabled?
-4. **Other work types:** intersections, sidewalk closures, night work, or full road closures with detours?
-5. **Azure ownership:** will IT host it in the utility's own Azure subscription, or should it run in a separate one?
+2. **City traffic rules:** links or copies of the Mesa, Chandler, Gilbert, Tempe, Queen Creek, and
+   Apache Junction traffic control/barricade rules, so the police, hours, and night-work triggers can be encoded.
+3. **LLM use:** may drawing excerpts be sent to an LLM provider, or should the assistant stay disabled for now?
+4. **Other work types:** sidewalk-only closures or full road closures with detours (not yet in scope)?
