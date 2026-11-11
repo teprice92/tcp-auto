@@ -1,0 +1,21 @@
+jurisdiction:
+  id: cities/AZ/apache-junction
+  level: city
+  name: City of Apache Junction
+  extends: [states/AZ]
+  applies_to: { road_owner: city, city: Apache Junction }
+  note: "Spans Maricopa and Pinal counties."
+status: stub
+rules:
+  permit:
+    value: "ROW encroachment permit required for all work in city ROW; 100% performance bond or equivalent"
+    cite: { source: aj-code-row, section: "city code (verify section)" }
+    verified: false
+  police_required:
+    value:
+      # User-reported; not found in any provided document. Applied because it is the safer choice.
+      - when: { school_zone: true, during: school_hours }
+        role: "uniformed off-duty police officer"
+        cite: { source: user-reported, section: "utility staff report" }
+        verified: false
+        note: "Confirm with the city and update the citation."

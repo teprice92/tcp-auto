@@ -1,0 +1,10 @@
+# Placeholder: no county documents obtained yet. Federal + Arizona rules apply, and the app shows
+# "local rules not loaded".
+jurisdiction:
+  id: counties/AZ/pinal
+  level: county
+  name: Pinal County Public Works
+  extends: [states/AZ]
+  applies_to: { road_owner: county, county: Pinal }
+status: stub
+rules: {}

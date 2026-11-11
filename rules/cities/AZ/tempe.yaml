@@ -1,0 +1,122 @@
+jurisdiction:
+  id: cities/AZ/tempe
+  level: city
+  name: City of Tempe
+  extends: [states/AZ, cities/AZ/phoenix]
+  applies_to: { road_owner: city, city: Tempe }
+status: partial
+rules:
+  peak_hours:
+    value:
+      road_class: [arterial, collector]
+      weekdays: ["07:00-08:30", "15:30-18:30"]
+      effect: no_restrictions
+      exceptions: "emergency, or approved by City Traffic Engineer"
+    cite: { source: tempe-tbm-2016, section: "4.2, 4.4" }
+    verified: true
+  police_required:
+    value:
+      - when: { city_review: true }
+        role: "uniformed off-duty police officer (may be required by the City)"
+        cite: { source: tempe-tbm-2016, section: "4.2, 4.4" }
+        verified: true
+      # User-reported; not found in any provided document. Applied because it is the safer choice.
+      - when: { school_zone: true, during: school_hours }
+        role: "uniformed off-duty police officer"
+        cite: { source: user-reported, section: "utility staff report" }
+        verified: false
+        note: "Confirm with the city and update the citation."
+  police_request:
+    value: { phone: "480-350-8789", lead_time_hours: 72, min_hours: 3 }
+    cite: { source: tempe-tbm-2016, section: "7 (phone); lead time and minimum from Tempe PD web page" }
+    verified: false
+  work_hours:
+    value:
+      residential_within_ft: 500
+      residential:
+        "04-15..10-15": "06:00-19:00"
+        "10-16..04-14": "07:00-19:00"
+      commercial_industrial: "05:00-19:00"
+      weekends_holidays: "07:00-19:00"
+      concrete_pour:
+        "04-15..10-15": "05:00-19:00"
+        "10-16..04-14": "06:00-19:00"
+      outside_hours: "written authorization letter from Neighborhood Services (480-350-8883)"
+    cite: { source: tempe-tbm-2016, section: "4.3 (Tempe City Code 20-8)" }
+    verified: true
+  night_work:
+    value:
+      definition: "19:00-06:00"
+      requires: [written_authorization_letter]
+      preference: "night and weekend work in non-residential areas"
+    cite: { source: tempe-tbm-2016, section: "Exec. Summary goal 6; 4.3; 5.2" }
+    verified: true
+  required_devices:
+    value:
+      - when: { duration: short_duration }   # <= 60 minutes
+        devices: ["operating arrow panel", "light bar or yellow flashers or strobe lights", "cone taper >= 50 ft"]
+      - when: { bike_lane_closed: true }
+        devices: ["W16-1P SHARE THE ROAD 50 ft before merging taper", "W16-1P 50 ft downstream of each intersecting collector/arterial"]
+      - when: { road_class: [arterial, collector], duration_days_gt: 7 }
+        devices: ["3x5 ft orange construction project sign (owner, contractor, description, dates, 24-hr phone)"]
+      - when: { capacity_reduction_pct_gte: 50, duration_days_gt: 5, after_state_route_interchange: true }
+        devices: ["changeable message board 48 hours before"]
+      - when: { capacity_reduction_pct_gte: 66, during: peak_hours }
+        devices: ["changeable message board 7 days before"]
+    cite: { source: tempe-tbm-2016, section: "4.2, 4.6, 4.7" }
+    verified: true
+  drop_off:
+    value:
+      le_3in: "vertical panels; close adjacent bike lane"
+      3_to_18in: "3 ft min buffer from travel lane"
+      ge_18in: "10 ft min buffer; consider fencing/barrier"
+      open_trench: "steel plates per Tempe Utility Permit and Construction Manual"
+    cite: { source: tempe-tbm-2016, section: "4.7" }
+    verified: true
+  pedestrian:
+    value:
+      detour: "pedestrian escort or clearly delineated detour"
+      roadway_detour_protection: "concrete or water-filled barriers"
+      transit_stop_relocation_max_ft_without_approval: 500
+    cite: { source: tempe-tbm-2016, section: "4.6" }
+    verified: true
+  tcp_submittal:
+    value:
+      lead_time: "3 full working days"
+      method: ["Accela portal https://epermits.tempe.gov/CitizenAccess/", "in person, 200 E. Fifth St, 2nd floor"]
+      prerequisite: "right-of-way permit; permit number shown on TCP"
+      preparer: "barricade company with Tempe annual traffic barricade certification; ATSSA-certified designer"
+      required_contents:
+        - start and end date of construction
+        - hours of traffic restrictions
+        - right-of-way permit number
+        - preconstruction meeting date and inspector (when applicable)
+        - contractor company, contact name, phone
+        - all streets within and around the work area, labeled
+        - work zone
+        - location and placement of all TTC devices
+        - potential conflicts (bus stops, bike lanes, driveways)
+        - crosswalks and traffic islands
+        - which intersections are signalized
+        - intersection lane configurations (protected lefts, free rights, shared lanes)
+      changes_deadline: "11:00 a.m. the business day before expiration (2 days if transit affected)"
+      max_duration_days: 60
+    cite: { source: tempe-tbm-2016, section: "2, 2.2, 3, 4.3, 4.5" }
+    verified: true
+  fees:
+    value:
+      tcp_review: 50
+      utility_annual_barricade_fee: 12000
+      arterial_full_closure_per_day_per_direction: 2500
+      sidewalk_bike_path_closure: { per_day: 50, max: 1000 }
+      variable_fee_exempt: [nights, weekends, holidays]
+    cite: { source: tempe-tbm-2016, section: "5" }
+    verified: true
+  contacts:
+    value:
+      traffic_engineering: "480-350-4311"
+      police_off_duty: "480-350-8789"
+      neighborhood_services: "480-350-8883"
+      emergencies: "9-1-1 (notify Tempe PD of unplanned restrictions)"
+    cite: { source: tempe-tbm-2016, section: "4.8, 7" }
+    verified: true

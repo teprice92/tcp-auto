@@ -1,0 +1,52 @@
+jurisdiction:
+  id: cities/AZ/queen-creek
+  level: city
+  name: Town of Queen Creek
+  extends: [states/AZ]
+  applies_to: { road_owner: city, city: Queen Creek }
+  note: "Spans Maricopa and Pinal counties; town rules apply in both."
+status: partial
+rules:
+  base_standards:
+    value: ["MAG Uniform Standard Specifications and Details", "Queen Creek Supplement to MAG", "MUTCD (Part 6 as amended by Arizona)"]
+    cite: { source: qc-dspm-notes-2007, section: "Paving Note 4" }
+    verified: true
+  permit:
+    value: "ROW encroachment permit from Town Engineering required before TCP submittal"
+    cite: { source: qc-dspm-notes-2007, section: "Paving Notes 5, 19" }
+    verified: true
+  police_required:
+    value:
+      - when: { indicated_on_accepted_tcp: true }
+        role: "off-duty Maricopa County Deputy Sheriff (Queen Creek District)"
+        cite: { source: qc-tcp-app, section: "application form" }
+        verified: false
+      # User-reported; not found in any provided document. Applied because it is the safer choice.
+      - when: { school_zone: true, during: school_hours }
+        role: "uniformed off-duty police officer"
+        cite: { source: user-reported, section: "utility staff report" }
+        verified: false
+        note: "Confirm with the city and update the citation."
+  tcp_submittal:
+    value:
+      lead_time: "10 working days"
+      package: "one combined PDF: application + signed encroachment permit + TCP"
+      haul_route_lead_time_hours: 48
+      on_site: "copy of approved TCP and permit"
+    cite: { source: qc-tcp-app, section: "application form" }
+    verified: false
+  road_closure:
+    value:
+      approver: { up_to_7_days: "Town Traffic Engineer", over_7_days: "Town Manager or designee" }
+      lead_time_working_days: 21
+      allowed_only_if: "hazard cannot be mitigated otherwise, or work requires it; denied if feasible alternative exists"
+      detour_plan: required
+      custom_signs: "applicant fabricates and installs"
+      message_boards_advance_weeks: 2
+      bond: "may be required"
+    cite: { source: qc-full-closure-2023, section: "A-H" }
+    verified: true
+  contacts:
+    value: { town: "480-358-3000", traffic_engineering: "480-358-3132", public_works: "480-358-3003" }
+    cite: { source: qc-dspm-notes-2007, section: "signing notes; paving notes" }
+    verified: true

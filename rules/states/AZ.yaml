@@ -1,0 +1,48 @@
+jurisdiction:
+  id: states/AZ
+  level: state
+  name: Arizona Supplement to the MUTCD (11th Edition)
+  extends: [federal/mutcd-11]
+  applies_to: { state: AZ }
+status: partial
+rules:
+  mutcd_edition:
+    value: "11th Edition, with Arizona Supplement (January 2026)"
+    cite: { source: az-supp-mutcd11-2026, section: "cover, p. AZ-i" }
+    verified: true
+  scheduling:
+    value:
+      lane_closures_high_volume: off_peak
+      consider_night_work: "if the work can be done as a series of short-term operations"
+    cite: { source: az-supp-mutcd11-2026, section: "6A.02 B.6" }
+    verified: true
+  coordination:
+    value:
+      - "Early coordination with school officials: pick-up/drop-off, school bus routing, safe routes to school"
+      - "Early coordination with cross-street agencies and emergency services if significant impacts"
+      - "Assess needs of transit and railroads"
+    cite: { source: az-supp-mutcd11-2026, section: "6A.02 B.7, G.4-G.7" }
+    verified: true
+  urban_low_speed_practice:
+    value:
+      shadow_vehicle: typically_not_needed
+      truck_mounted_attenuator: typically_not_needed
+      crash_cushions_barriers: typically_not_appropriate
+      extra_signs_beyond_mutcd: typically_not_appropriate
+    cite: { source: az-supp-mutcd11-2026, section: "6A.02 para 04" }
+    verified: true
+  higher_fines_signs:
+    value:
+      work_zone_speed_plaque: G20-5aP
+      end_work_zone_speed: R2-12
+      begin_end_higher_fines: [R2-10, R2-11]
+      state_highway_double_fines: "only when workers are present (ARS 28-652, 28-710); per ADOT TTCDG figures"
+    cite: { source: az-supp-mutcd11-2026, section: "6G.08" }
+    verified: true
+  school_zone:
+    value:
+      school_speed_zone_begin_ft: { min: 200, max: 500, note: "ahead of school grounds or crossing; increase if school limit >= 30 mph" }
+      arizona_school_crossing: "ARS 28-797: yellow crosswalk, 15 mph SCHOOL IN SESSION; signs per ADOT School Area Guidelines"
+      detect_for_work_zone: true
+    cite: { source: az-supp-mutcd11-2026, section: "7B.05" }
+    verified: true

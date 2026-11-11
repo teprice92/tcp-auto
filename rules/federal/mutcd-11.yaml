@@ -1,0 +1,54 @@
+# FHWA MUTCD 11th Edition (2023), Part 6 baseline.
+# STATUS: values are from general MUTCD knowledge (long-standing Part 6 values) and have NOT yet been
+# checked against the 11th Edition text, which renumbered tables and typical applications.
+# Replace the `section` fields with 11th Edition references when the document is provided.
+jurisdiction:
+  id: federal/mutcd-11
+  level: federal
+  name: FHWA Manual on Uniform Traffic Control Devices, 11th Edition
+status: partial
+rules:
+  taper_length:
+    value:
+      merging_L: { formula_low: "W*S^2/60", formula_high: "W*S", low_speed_max_mph: 40, high_speed_min_mph: 45 }
+      shifting: "0.5*L"
+      shoulder: "0.33*L"
+      one_lane_two_way: { min_ft: 50, max_ft: 100 }
+      downstream: { min_ft: 50, max_ft: 100, per_lane: true }
+    cite: { source: mutcd-11, section: "Part 6 taper table (verify number)" }
+    verified: false
+  device_spacing:
+    value: { taper_max_ft: "1.0*S", tangent_max_ft: "2.0*S" }
+    cite: { source: mutcd-11, section: "Part 6 channelizing devices (verify)" }
+    verified: false
+  advance_warning_sign_spacing:
+    value:
+      urban_low_speed:  { A: 100, B: 100, C: 100 }
+      urban_high_speed: { A: 350, B: 350, C: 350 }
+      rural:            { A: 500, B: 500, C: 500 }
+      expressway:       { A: 1000, B: 1500, C: 2640 }
+    note: "Speed category is set by the highway agency. ADOT figures cite this as 'Table 6C-1'."
+    cite: { source: mutcd-11, section: "Advance warning sign spacing table (verify)" }
+    verified: false
+  buffer_length_ft:
+    value: { 20: 115, 25: 155, 30: 200, 35: 250, 40: 305, 45: 360, 50: 425, 55: 495, 60: 570, 65: 645, 70: 730, 75: 820 }
+    cite: { source: mutcd-11, section: "Longitudinal buffer / stopping sight distance table (verify)" }
+    verified: false
+  speed_reduction:
+    value: { max_mph_typical: 10, step_mph: 10 }
+    cite: { source: adot-ttcdg-2025, section: "p.2 (quoting MUTCD 6C.01)" }
+    verified: true
+  work_duration:
+    value:
+      long_term: "> 3 days"
+      intermediate_term: "> 1 daylight period up to 3 days, or night work > 1 hour"
+      short_term: "> 1 hour within a single daylight period"
+      short_duration: "<= 1 hour"
+      mobile: "moves intermittently or continuously"
+    cite: { source: adot-ttcdg-2025, section: "p.13 (quoting MUTCD)" }
+    verified: true
+  min_work_area_ft:
+    value: 250
+    note: "TCP-Auto project default (two large utility trucks), not an MUTCD value."
+    cite: { source: project, section: "PLAN.md goal 4" }
+    verified: true

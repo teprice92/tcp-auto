@@ -1,0 +1,88 @@
+# Source packet is dated Aug 2014. Check with Gilbert Traffic Engineering for a newer version.
+jurisdiction:
+  id: cities/AZ/gilbert
+  level: city
+  name: Town of Gilbert
+  extends: [states/AZ]
+  applies_to: { road_owner: city, city: Gilbert }
+status: partial
+rules:
+  peak_hours:
+    value:
+      road_class: [arterial]
+      weekdays: ["05:30-08:30", "15:30-19:00"]
+      effect: no_lane_closures
+      exceptions: "previously approved by the Traffic Engineer"
+      non_peak_option: "08:30-15:30"
+    cite: { source: gilbert-te-app-2014, section: "Ord. 10-5(b)(2)(b); TCP Application hours options" }
+    verified: true
+  police_required:
+    value:
+      - when: { within_ft_of_signalized_intersection: 300 }
+        role: "extra-duty Town of Gilbert police officer"
+        cite: { source: gilbert-te-app-2014, section: "TCP Application" }
+        verified: true
+      - when: { city_review: true }
+        role: "Gilbert police officer (reviewer checks 'Gilbert Police Officer Required')"
+        cite: { source: gilbert-te-app-2014, section: "TCP Application approval box" }
+        verified: true
+      # User-reported; not found in any provided document. Applied because it is the safer choice.
+      - when: { school_zone: true, during: school_hours }
+        role: "uniformed off-duty police officer"
+        cite: { source: user-reported, section: "utility staff report" }
+        verified: false
+        note: "Confirm with the city and update the citation."
+  police_request:
+    value: { lead_time_business_days: 5, phone: "480-635-7194" }
+    cite: { source: gilbert-te-app-2014, section: "TCP Application" }
+    verified: true
+  flagging:
+    value: { allowed: ["ATSSA certified flaggers", "extra-duty Town of Gilbert police officers"] }
+    cite: { source: gilbert-te-app-2014, section: "TTC/Work Zone Requirements: Flagging" }
+    verified: true
+  required_devices:
+    value:
+      - when: { road_class: [arterial], lane_closure: true }
+        devices: ["arrowboard"]
+    cite: { source: gilbert-te-app-2014, section: "Ord. 10-5(b)(2)(a)" }
+    verified: true
+  required_personnel:
+    value:
+      - when: { road_class: [arterial], installing_devices: true }
+        personnel: "ATSSA certified Traffic Control Supervisor on site"
+    cite: { source: gilbert-te-app-2014, section: "TTC/Work Zone Requirements" }
+    verified: true
+  night_work:
+    value: { hours_option_on_application: Nighttime }
+    note: "No separate night rules in this packet. Check Gilbert noise ordinance."
+    cite: { source: gilbert-te-app-2014, section: "TCP Application" }
+    verified: true
+  tcp_submittal:
+    value:
+      lead_time: "2 business days (normal review 48 hours; Friday/holiday submittals start next business day)"
+      preparer: "certified ATSSA member"
+      package: ["Traffic Engineering Application", "Certificate of Insurance (M GL and auto, Town as additional insured)", "TCP Application", "TCP"]
+      amendments: "traffic.workzones@gilbertaz.gov"
+      precon_meeting: required
+      extension_notice: "2 business days (road closure: 15 business days)"
+      on_site: "approved TCP and permit"
+      contacts_required: ["24-hour emergency contact", "who resets devices AM/PM", "who maintains after hours"]
+    cite: { source: gilbert-te-app-2014, section: "Ord. 10-5(b)(1); checklist; TTC/Work Zone Requirements" }
+    verified: true
+  road_closure:
+    value:
+      lead_time_days: 20
+      advance_info_signs_days: 10
+      emergency_lane_ft: 14
+      fire_access_route_plan: required
+      signoffs: ["Gilbert PS, Chandler USD, Higley USD transportation directors", "private/charter schools", "USPS", "Parks & Rec", "Fire Marshal", "Chief of Police", "Valley Metro"]
+    cite: { source: gilbert-te-app-2014, section: "Request for Road Closure" }
+    verified: true
+  haul_hours:
+    value: { weekdays: "08:30-15:30", excluding: "Town holidays" }
+    cite: { source: gilbert-te-app-2014, section: "Dirt Haul Requirements 6" }
+    verified: true
+  contacts:
+    value: { traffic_engineering: "480-503-6186", development_services: "480-503-6700" }
+    cite: { source: gilbert-te-app-2014, section: "various" }
+    verified: true

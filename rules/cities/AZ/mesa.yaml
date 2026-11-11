@@ -1,0 +1,43 @@
+# All rules from web summaries of the Mesa TTC Manual. Replace once the final 2nd Edition is provided.
+jurisdiction:
+  id: cities/AZ/mesa
+  level: city
+  name: City of Mesa
+  extends: [states/AZ]
+  applies_to: { road_owner: city, city: Mesa }
+status: stub
+rules:
+  base_manual:
+    value: "Mesa Temporary Traffic Control Manual, 2nd Edition (reported effective July 2026); replaced Phoenix TBM + Mesa Supplement 1/11/2018"
+    cite: { source: mesa-ttcm-2ed, section: "intro" }
+    verified: false
+  peak_hours:
+    value:
+      road_class: [arterial, collector]
+      weekdays: ["06:30-08:30", "16:00-18:00"]
+      effect: no_restrictions
+      exceptions: "approved; some arterials near freeways have alternate peak hours"
+    cite: { source: mesa-ttcm-2ed, section: "verify" }
+    verified: false
+  lane_restriction_limit:
+    value: "multi-lane streets: only one lane in a single direction may be restricted, not during peak hours"
+    cite: { source: mesa-ttcm-1ed-2017, section: "verify in 2nd Ed." }
+    verified: false
+  police_required:
+    value:
+      - when: { city_review: true }
+        role: "off-duty police officer or flagger (may be required); Mesa officers given priority"
+        cite: { source: mesa-ttcm-2ed, section: "verify" }
+        verified: false
+      # User-reported; not found in any provided document. Applied because it is the safer choice.
+      - when: { school_zone: true, during: school_hours }
+        role: "uniformed off-duty police officer"
+        cite: { source: user-reported, section: "utility staff report" }
+        verified: false
+        note: "Confirm with the city and update the citation."
+  school_zone:
+    value:
+      school_zone_signs_visible: required
+      school_crosswalks: "must remain open and accessible at all times"
+    cite: { source: mesa-ttcm-2ed, section: "verify (from draft)" }
+    verified: false

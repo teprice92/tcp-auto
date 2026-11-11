@@ -1,0 +1,28 @@
+jurisdiction:
+  id: cities/AZ/chandler
+  level: city
+  name: City of Chandler
+  extends: [states/AZ]
+  applies_to: { road_owner: city, city: Chandler }
+status: stub
+rules:
+  base_manual:
+    value: "Chandler Engineering & Design Standards Manual, Ch. 7 Traffic Barricade Design; Utility Permit Manual UDM-148"
+    cite: { source: chandler-edsm, section: "Ch. 7" }
+    verified: false
+  police_required:
+    value:
+      - when: { per_section: "7.6.5.1" }
+        role: "extra-duty officer (schedule via https://odm.officertrak.com/Chandler-AZ-PD)"
+        cite: { source: chandler-edsm, section: "7.6.5.1 (requirement text not yet seen)" }
+        verified: false
+      # User-reported; not found in any provided document. Applied because it is the safer choice.
+      - when: { school_zone: true, during: school_hours }
+        role: "uniformed off-duty police officer"
+        cite: { source: user-reported, section: "utility staff report" }
+        verified: false
+        note: "Confirm with the city and update the citation."
+  work_hours:
+    value: "work outside the permitted time frame is not allowed (sanctions per Ch. 7)"
+    cite: { source: chandler-udm148, section: "verify" }
+    verified: false

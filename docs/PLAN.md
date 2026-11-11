@@ -313,14 +313,16 @@ The app resolves the owner automatically from GIS layers: city/town limits, ADOT
 and county road inventories (most are published as open data). The user can override it. The
 owner also decides **who receives the report** (which permit office to email).
 
-Source documents to obtain and encode (verify the current edition and exact titles):
-- **FHWA MUTCD** and the **Arizona Supplement**. Confirm which MUTCD edition ADOT currently adopts.
-- **ADOT** traffic control design guidelines and standard traffic control drawings (for state routes and permits).
-- **MAG** (Maricopa Association of Governments) Uniform Standard Specifications and Details, used by many Maricopa cities.
-- **MCDOT** right-of-way permit and traffic control requirements (unincorporated Maricopa County).
-- **Pinal County Public Works** right-of-way / encroachment permit requirements.
-- **City barricade manuals / traffic control requirements and right-of-way permit conditions**
-  for Mesa, Chandler, Gilbert, Tempe, Queen Creek, and Apache Junction.
+**Source documents:** the register of what has been obtained (and what's missing) is in
+[`rules/sources/README.md`](../rules/sources/README.md). The findings are in
+[`docs/jurisdiction-research.md`](jurisdiction-research.md), and the encoded rules are in `rules/`.
+Key facts so far:
+- Arizona uses the **MUTCD 11th Edition with the Arizona Supplement (Jan 2026)**.
+- **Tempe adopts the Phoenix Traffic Barricade Manual** as its base, with Tempe changes. So the rules
+  engine must support one city adopting another city's manual (`extends: [cities/AZ/phoenix]`).
+- **Weekday peak-hour bans differ by city:** Tempe 7:00–8:30 / 15:30–18:30 (arterial and collector);
+  Gilbert 5:30–8:30 / 15:30–19:00 (arterial lane closures); Mesa 6:30–8:30 / 16:00–18:00 (to confirm).
+- Still missing: the final Mesa manual, Chandler EDSM Ch. 7 and UDM-148, the Phoenix TBM, MCDOT, Pinal County, and MAG.
 
 Arizona-specific rule topics to capture:
 - Peak-hour lane-closure restrictions on arterials (common in metro Phoenix cities). Exact hours vary by agency.
@@ -337,17 +339,21 @@ not loaded" warning), (2) Mesa, Chandler, Gilbert, (3) Tempe, Queen Creek, Apach
 
 #### 3.6.2 Police officer requirements
 
-The East Valley cities spell out when an officer is needed in their traffic control rules. Each
-city's file encodes those triggers with citations. Known so far:
+Each city's file lists its triggers with citations. Known so far:
 
-- **School zone → police officer required.** The app checks for school zones automatically (§3.5),
-  asks the user to confirm, and if confirmed adds an officer to the plan, the report, and the device
-  counts. Whether the officer is needed only during school hours or for all work hours comes from
-  the city's rule.
+| Trigger | Where | Status |
+|---|---|---|
+| Work **within 300 ft of a signalized intersection** → extra-duty Gilbert officer (request 5 business days ahead) | Gilbert | From source document |
+| Flagging → ATSSA-certified flaggers **or** extra-duty Gilbert officers | Gilbert | From source document |
+| City may require a uniformed off-duty officer at plan review | Tempe, Gilbert, Mesa, Queen Creek (MCSO deputy) | Tempe and Gilbert from source; others from web summaries |
+| Lane closures leaving **one through lane at a signal** → officer to manually allocate green time | Phoenix TBM (applies in Tempe through adoption) | Web summary; need the document |
+| Brake-check flagger must be a uniformed officer | ADOT (state highways) | From source document |
+| **School zone** → officer | All cities (user-reported) | **Not found in any document yet.** Applied anyway, labeled "confirm with city" |
 
-Other common triggers to look for when reading each city's rules: signalized intersections,
-arterials, high-speed roads, lane closures that stop traffic, night work, and work near
-special events.
+The app checks for school zones and Arizona School Crossings automatically (§3.5) and asks the user
+to confirm. If confirmed, it adds an officer to the plan, the report, and the device counts. Mesa's
+draft manual also requires that **school-zone crosswalks stay open** and school signs stay visible
+inside the work zone.
 
 How it shows up in the tool:
 - A clear **"Police officer required"** banner, with the reason and rule citation (e.g., "School zone: Gilbert traffic control manual §x.x").
@@ -402,8 +408,15 @@ When the work hours fall between sunset and sunrise (or the user marks it as nig
   light towers for the work area. These are added to the map and device counts.
 - **Equipment**: arrow boards and message boards where the rules call for them, and high-visibility
   apparel notes (e.g., Class 3 for flaggers at night).
-- **Rules**: nighttime work permits and noise ordinance limits per city. The app shows a checklist
-  item when a city needs a permit.
+- **ADOT night practice** (used as the default): flagger stations that stop traffic must be lit by
+  street lights or light towers; flashing lights on sign assemblies left up overnight; Type A lights on
+  both ends of Type 3 barricades; Type C steady-burn lights for lane guidance. Cones are strongly
+  discouraged in tapers at night, so the generator uses drums or vertical panels instead.
+- **Duration:** under the MUTCD, night work lasting more than 1 hour counts as *intermediate-term*,
+  which affects device choice.
+- **City rules:** Tempe requires a **written authorization letter** for night work (City Code §20-8).
+  Allowed hours depend on the season and on whether the site is **within 500 ft of a residential zone**,
+  so the tool needs nearby land use from city GIS or OSM. The app shows a checklist item when a city needs a permit or letter.
 - **Report**: night hours are shaded in the timeline bar chart, and the explanation mentions
   lighting and any permits needed.
 
@@ -692,13 +705,16 @@ school-zone police rule, editing, and hosting with email sign-in.
 | Report format | No required format; highlighted map + brief explanation + timeline |
 | Missing drawing info | Entered by the user in the project details form |
 | Work types | Mid-block, intersections (incl. signalized), and night work |
-| Police officers | Per each city's traffic rules; school zones always require one |
+| Police officers | Per each city's traffic rules (Gilbert: within 300 ft of a signal); school zones always require one (source to be confirmed) |
+| Rule sources | Arizona = MUTCD 11th Ed. + AZ Supplement (Jan 2026); Tempe builds on the Phoenix TBM; see `rules/sources/README.md` |
 | Platform | Hosted web app in a project-owned cloud account (Azure suggested); no IT needed to start; Microsoft 365 integration optional later |
 
 **Still open**
 
 1. **Sample drawings:** a few real (sanitized) PDFs to confirm the "Construct"/"Remove" assumption and tune the keyword list.
-2. **City traffic rules:** links or copies of the Mesa, Chandler, Gilbert, Tempe, Queen Creek, and
-   Apache Junction traffic control/barricade rules, so the police, hours, and night-work triggers can be encoded.
-3. **LLM use:** may drawing excerpts be sent to an LLM provider, or should the assistant stay disabled for now?
-4. **Other work types:** sidewalk-only closures or full road closures with detours (not yet in scope)?
+2. **Remaining rule documents:** final Mesa TTC Manual (2nd Ed.), Chandler EDSM Ch. 7 + UDM-148,
+   Phoenix Traffic Barricade Manual, Apache Junction standards, MCDOT, Pinal County, MAG traffic
+   control sections, and the MUTCD 11th Ed. Part 6/7 (see `rules/sources/README.md`).
+3. **School-zone police rule:** where is it written down (city manual, permit condition, or company policy)?
+4. **LLM use:** may drawing excerpts be sent to an LLM provider, or should the assistant stay disabled for now?
+5. **Other work types:** sidewalk-only closures or full road closures with detours (not yet in scope)?

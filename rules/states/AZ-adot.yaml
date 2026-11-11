@@ -1,0 +1,71 @@
+# ADOT Temporary Traffic Control Design Guidelines (April 2025).
+# Applies to the state highway system. Cities often follow these practices too, so the
+# night-work and spacing rules are also used as a reference when a city file is silent.
+jurisdiction:
+  id: states/AZ-adot
+  level: state-agency
+  name: ADOT Temporary Traffic Control Design Guidelines
+  extends: [states/AZ]
+  applies_to: { road_owner: ADOT }
+status: partial
+rules:
+  double_fines_signing:
+    value:
+      required: "all TTC patterns with workers present (state law)"
+      sequence: ["W20-1 + R2-101 at start", "R2-102 every <= 2500 ft", "R2-103 at end", "G20-2AZ"]
+      double_fine_area_min_ft: 1000
+      only_when_workers_present: true
+    cite: { source: adot-ttcdg-2025, section: "p.1; Figure SA-12" }
+    verified: true
+  move_over_sign:
+    value: { sign: R4-103, when: "roadways with at least 2 lanes" }
+    cite: { source: adot-ttcdg-2025, section: "p.1" }
+    verified: true
+  speed_reduction:
+    value:
+      max_mph_without_approval: 10
+      approval_for_more: "District Engineer / Regional Traffic Engineer"
+      advance_sign: [W3-5, W3-5aAZ]
+      restore_limit_sign_ft_past_zone: 500
+      documentation_required: true
+      taper_and_spacing_use: "design / off-peak 85th percentile / existing speed, not the reduced speed"
+    cite: { source: adot-ttcdg-2025, section: "pp.2-4" }
+    verified: true
+  device_spacing:
+    value:
+      posted_ge_40mph: { taper_ft: 40, tangent_ft: 80 }
+      posted_lt_40mph: { taper_max_ft: "1.0*S", tangent_max_ft: "2.0*S" }
+      departure_taper_ft: 20
+      one_lane_two_way_ft: 20
+    cite: { source: adot-ttcdg-2025, section: "pp.5-6" }
+    verified: true
+  night_work:
+    value:
+      flagger_station_lighting: "street lighting or portable light towers where flaggers stop traffic"
+      cones_in_tapers: strongly_discouraged
+      cone_min_height_in: 28
+      cone_retroreflective_bands: required
+      sign_flashing_lights: "whenever signs are in place overnight, early morning, or late evening (except G20-2AZ)"
+      type3_barricade_lights: "Type A flashing on each end if left overnight or set before sunrise / after sunset"
+      lane_guidance_lights: "Type C steady-burn (merging/shifting tapers, tangents)"
+    cite: { source: adot-ttcdg-2025, section: "pp.3-6, 12-13" }
+    verified: true
+  pedestrian:
+    value: { min_route_width_ft: 4, max_cross_slope_pct: 2, same_side_preferred: true, standard: "ADA / PROWAG" }
+    cite: { source: adot-ttcdg-2025, section: "p.3" }
+    verified: true
+  police_required:
+    value:
+      - when: { operation: brake_check_flagger }
+        role: "uniformed police officer as brake-check flagger"
+        cite: { source: adot-ttcdg-2025, section: "Figure SA-4 note 3" }
+        verified: true
+  templates:
+    value:
+      SA-2: "Road closure at far side of intersection, multi-lane"
+      SA-3: "One lane closure of two-way roadway with pilot car"
+      SA-6: "Diversion of left through lane onto left turn lane"
+      SA-7: "Right lane closure with lane shifts using left turn lane"
+      SA-8: "Intersection with right turn lane, right lane closure, near side"
+    cite: { source: adot-ttcdg-2025, section: "Appendix" }
+    verified: true

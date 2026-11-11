@@ -1,0 +1,20 @@
+# City of Phoenix Traffic Barricade Manual. Not in the service area itself, but Tempe adopts it
+# as its base manual and Queen Creek references it. Load it as a parent layer only.
+jurisdiction:
+  id: cities/AZ/phoenix
+  level: city
+  name: City of Phoenix Traffic Barricade Manual (reference layer)
+  extends: [states/AZ]
+  applies_to: { adopted_by_only: true }
+status: stub
+rules:
+  police_required:
+    value:
+      - when: { signalized_intersection: true, through_lanes_remaining: 1 }
+        role: "uniformed police officer to manually allocate green time"
+        cite: { source: phx-tbm-9r, section: "signalized intersections (verify)" }
+        verified: false
+  signal_work_hours:
+    value: { near_signalized_intersection: off_peak_only }
+    cite: { source: phx-tbm-9r, section: "verify" }
+    verified: false
