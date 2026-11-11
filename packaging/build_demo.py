@@ -12,6 +12,7 @@ if none is found they're skipped and the HTML previews still work.
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import shutil
@@ -32,24 +33,47 @@ def phases(start, end, a="09:00", b="15:00"):
     return [{"name": "Work", "start_date": start, "end_date": end, "start_time": a, "end_time": b}]
 
 
+ROADS = json.loads((ROOT / "samples" / "demo_roads.json").read_text(encoding="utf-8"))
+
+
+def road(key: str, **attrs) -> dict:
+    """Real street geometry (samples/demo_roads.json) plus lane/speed attributes for the scenario."""
+    from tcp_auto.geo import Centerline
+    from tcp_auto.models import LatLon
+
+    r = ROADS[key]
+    cl = Centerline([LatLon(**p) for p in r["centerline"]])
+    ints = [{"station_ft": round(cl.project(LatLon(**i["at"]))[0], 1), "cross_street": i["cross_street"], "signalized": i["signalized"]}
+            for i in r["intersections"]]
+    return {"name": r["name"], "centerline": r["centerline"], "intersections": ints, "speed_confirmed": True,
+            "sources": {"centerline": "osm"}, **attrs}
+
+
+def along(key: str, cross_street: str, meters: float) -> dict:
+    """Point on the road `meters` east (+) or west (-) of an intersection."""
+    r = ROADS[key]
+    at = next(i["at"] for i in r["intersections"] if i["cross_street"] == cross_street)
+    (a, b) = r["centerline"][0], r["centerline"][-1]
+    lon = at["lon"] + meters / (111_320 * math.cos(math.radians(at["lat"])))
+    f = (lon - a["lon"]) / (b["lon"] - a["lon"])
+    return {"lat": a["lat"] + f * (b["lat"] - a["lat"]), "lon": lon}
+
+
 SAMPLES = [
     dict(name="Demo 1 – Pole replacement from drawing (Tempe)", drawing=True,
          details={"city": "Tempe", "work_position": "lane", "phases": phases("2026-12-01", "2026-12-02"), "contacts": CONTACTS, "permit_number": "ROW-DEMO-001"},
-         road={"name": "E University Dr", "centerline": [{"lat": 33.4216, "lon": -111.9200}, {"lat": 33.4216, "lon": -111.9050}], "speed_mph": 40, "speed_confirmed": True,
-               "lanes_forward": 2, "lanes_backward": 2, "road_class": "arterial", "intersections": [{"station_ft": 1400, "cross_street": "S Rural Rd", "signalized": True}]},
-         center={"lat": 33.4216, "lon": -111.9125}),
+         road=lambda: road("university_dr_tempe", speed_mph=40, lanes_forward=2, lanes_backward=2, road_class="arterial"),
+         center=lambda: along("university_dr_tempe", "S Rural Rd", 300)),
     dict(name="Demo 2 – Near a signal, police required (Gilbert)", drawing=False,
-         details={"city": "Gilbert", "address": "E Guadalupe Rd at S Gilbert Rd", "description": "replace a pad-mount transformer", "work_position": "lane",
+         details={"city": "Gilbert", "address": "E Guadalupe Rd west of N Gilbert Rd", "description": "replace a pad-mount transformer", "work_position": "lane",
                   "phases": phases("2026-12-03", "2026-12-04"), "contacts": CONTACTS, "permit_number": "TRF-DEMO-002", "job_number": "WO-DEMO-2"},
-         road={"name": "E Guadalupe Rd", "centerline": [{"lat": 33.3636, "lon": -111.8020}, {"lat": 33.3636, "lon": -111.7820}], "speed_mph": 45, "speed_confirmed": True,
-               "lanes_forward": 2, "lanes_backward": 2, "road_class": "arterial", "intersections": [{"station_ft": 3190, "cross_street": "S Gilbert Rd", "signalized": True}]},
-         center={"lat": 33.3636, "lon": -111.7905}),
-    dict(name="Demo 3 – Night transfer, two-lane road (Gilbert)", drawing=False,
-         details={"city": "Gilbert", "address": "E Elliot Rd", "description": "transfer conductors to new poles", "work_position": "lane",
-                  "phases": phases("2026-12-08", "2026-12-08", "20:00", "23:30"), "contacts": CONTACTS, "job_number": "WO-DEMO-3"},
-         road={"name": "E Elliot Rd", "centerline": [{"lat": 33.3497, "lon": -111.7520}, {"lat": 33.3497, "lon": -111.7400}], "speed_mph": 35, "speed_confirmed": True,
-               "lanes_forward": 1, "lanes_backward": 1, "road_class": "collector", "has_sidewalk": True},
-         center={"lat": 33.3497, "lon": -111.7460}),
+         road=lambda: road("guadalupe_rd_gilbert", speed_mph=45, lanes_forward=2, lanes_backward=2, road_class="arterial"),
+         center=lambda: along("guadalupe_rd_gilbert", "N Gilbert Rd", -122)),  # ~400 ft before the signal
+    dict(name="Demo 3 – Night transfer, two-lane street (Gilbert)", drawing=False,
+         details={"city": "Gilbert", "address": "E Park Ave between N Palm St and N Cottonwood Dr", "description": "transfer conductors to new poles",
+                  "work_position": "lane", "phases": phases("2026-12-08", "2026-12-08", "20:00", "23:30"), "contacts": CONTACTS, "job_number": "WO-DEMO-3"},
+         road=lambda: road("park_ave_gilbert", speed_mph=25, lanes_forward=1, lanes_backward=1, road_class="local", has_sidewalk=True),
+         center=lambda: along("park_ave_gilbert", "N Palm St", 195)),
 ]
 
 
@@ -74,7 +98,7 @@ def main(out: Path, embed: bool = False) -> None:
         if s["drawing"]:
             with open(ROOT / "samples" / "sample_drawing.pdf", "rb") as f:
                 p = c.post(f"/api/projects/{pid}/drawing", files={"file": ("sample_drawing.pdf", f, "application/pdf")}).json()
-        r = c.put(f"/api/projects/{pid}", json={"details": {**p["details"], **s["details"]}, "road": s["road"], "work_center": s["center"]})
+        r = c.put(f"/api/projects/{pid}", json={"details": {**p["details"], **s["details"]}, "road": s["road"](), "work_center": s["center"]()})
         r.raise_for_status()
         p = c.post(f"/api/projects/{pid}/generate").json()
         data["projects"][pid] = p

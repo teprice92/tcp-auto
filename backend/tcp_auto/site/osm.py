@@ -42,29 +42,62 @@ def _post(query: str, timeout: float = 25.0) -> dict:
         raise OSMUnavailable(str(e)) from e
 
 
+def _speed(tags: dict) -> int | None:
+    m = re.match(r"(\d+)\s*(mph)?", tags.get("maxspeed", ""))
+    return int(m.group(1)) if m else None
+
+
+def _stitch(main: dict, ways: list[dict], max_ways: int = 12) -> tuple[list, list]:
+    """OSM splits streets into short ways at intersections. Join same-named ways that share end
+    nodes (in either direction) so the centerline covers the whole work zone."""
+    name = main.get("tags", {}).get("name")
+    nodes = list(main.get("nodes") or [])
+    geom = list(main["geometry"])
+    if not name or len(nodes) != len(geom):
+        return nodes, geom
+    pool = [w for w in ways if w["id"] != main["id"] and w.get("tags", {}).get("name") == name
+            and w.get("tags", {}).get("oneway") == main.get("tags", {}).get("oneway")
+            and len(w.get("nodes") or []) == len(w["geometry"])]
+    for _ in range(max_ways):
+        grown = False
+        for w in list(pool):
+            wn, wg = w["nodes"], w["geometry"]
+            if wn[0] == nodes[-1]:
+                nodes, geom = nodes + wn[1:], geom + wg[1:]
+            elif wn[-1] == nodes[-1]:
+                nodes, geom = nodes + wn[-2::-1], geom + wg[-2::-1]
+            elif wn[-1] == nodes[0]:
+                nodes, geom = wn[:-1] + nodes, wg[:-1] + geom
+            elif wn[0] == nodes[0]:
+                nodes, geom = wn[:0:-1] + nodes, wg[:0:-1] + geom
+            else:
+                continue
+            pool.remove(w)
+            grown = True
+        if not grown:
+            break
+    return nodes, geom
+
+
 def overpass_query(lat: float, lon: float, radius_m: int = 60) -> str:
+    """Ways near the point (with geometry), connected ways of the same street, signals, schools."""
     return f"""
 [out:json][timeout:25];
 way(around:{radius_m},{lat},{lon})[highway] -> .main;
 .main out body geom;
-way(around:400,{lat},{lon})[highway] -> .near;
-.near out body;
-node(around:400,{lat},{lon})[highway=traffic_signals];
+way(around:900,{lat},{lon})[highway] -> .near;
+.near out body geom;
+node(around:900,{lat},{lon})[highway=traffic_signals];
 out body;
 nwr(around:250,{lat},{lon})[amenity=school];
 out center tags;
 """
 
 
-def _speed(tags: dict) -> int | None:
-    m = re.match(r"(\d+)\s*(mph)?", tags.get("maxspeed", ""))
-    return int(m.group(1)) if m else None
-
-
 def parse_overpass(data: dict, lat: float, lon: float) -> tuple[RoadContext, dict]:
     """Pick the nearest drivable way and build a RoadContext suggestion."""
     elements = data.get("elements", [])
-    ways = [e for e in elements if e["type"] == "way" and e.get("geometry") and e.get("tags", {}).get("highway") in DRIVABLE]
+    ways = list({e["id"]: e for e in elements if e["type"] == "way" and e.get("geometry") and e.get("tags", {}).get("highway") in DRIVABLE}.values())
     if not ways:
         raise LookupError("No drivable road found near this point.")
     here = LatLon(lat=lat, lon=lon)
@@ -75,7 +108,9 @@ def parse_overpass(data: dict, lat: float, lon: float) -> tuple[RoadContext, dic
 
     main = min(ways, key=dist)
     tags = main.get("tags", {})
-    pts = [LatLon(lat=g["lat"], lon=g["lon"]) for g in main["geometry"]]
+    node_ids, geom = _stitch(main, ways)
+    main = {**main, "nodes": node_ids}
+    pts = [LatLon(lat=g["lat"], lon=g["lon"]) for g in geom]
     cl = Centerline(pts)
     rclass = CLASS_MAP.get(tags.get("highway"), RoadClass.collector)
     one_way = tags.get("oneway") in ("yes", "1", "true")

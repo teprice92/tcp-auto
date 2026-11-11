@@ -1,0 +1,80 @@
+{
+ "_about": "Road centerlines for the online demo, measured from OpenStreetMap map tiles (packaging/osm_tiles.py) because the OSM data API wasn't reachable from the build machine. Map data (c) OpenStreetMap contributors, ODbL.",
+ "university_dr_tempe": {
+  "name": "E University Dr",
+  "centerline": [
+   {
+    "lat": 33.42203,
+    "lon": -111.929687
+   },
+   {
+    "lat": 33.421996,
+    "lon": -111.910313
+   }
+  ],
+  "intersections": [
+   {
+    "cross_street": "S Rural Rd",
+    "signalized": true,
+    "at": {
+     "lat": 33.422013,
+     "lon": -111.926311
+    }
+   }
+  ]
+ },
+ "guadalupe_rd_gilbert": {
+  "name": "E Guadalupe Rd",
+  "centerline": [
+   {
+    "lat": 33.364404,
+    "lon": -111.80018
+   },
+   {
+    "lat": 33.364534,
+    "lon": -111.78082
+   }
+  ],
+  "intersections": [
+   {
+    "cross_street": "N Gilbert Rd",
+    "signalized": true,
+    "at": {
+     "lat": 33.364469,
+     "lon": -111.789854
+    }
+   }
+  ]
+ },
+ "park_ave_gilbert": {
+  "name": "E Park Ave",
+  "centerline": [
+   {
+    "lat": 33.352791,
+    "lon": -111.787258
+   },
+   {
+    "lat": 33.352791,
+    "lon": -111.782742
+   }
+  ],
+  "intersections": [
+   {
+    "cross_street": "N Palm St",
+    "signalized": false,
+    "at": {
+     "lat": 33.352791,
+     "lon": -111.786721
+    }
+   },
+   {
+    "cross_street": "N Cottonwood Dr",
+    "signalized": false,
+    "at": {
+     "lat": 33.352791,
+     "lon": -111.784189
+    }
+   }
+  ]
+ }
+}
