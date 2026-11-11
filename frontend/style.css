@@ -252,15 +252,37 @@ details.src summary { cursor: pointer; font-size: 12.5px; color: var(--blue-700)
   .rv-top { flex-wrap: wrap; } .tabs { order: 3; width: 100%; overflow-x: auto; }
 }
 
+.map-toggle { display: none; }
+
 @media (max-width: 820px) {
+  /* Phones: the steps get most of the screen; the map is a compact strip users can pinch-zoom,
+     with an Expand button for editing. */
   main { flex-direction: column; }
-  #panel { width: 100%; max-width: none; height: 55vh; border-right: none; border-bottom: 1px solid var(--line); padding: var(--space-3); }
-  .top { flex-wrap: wrap; gap: var(--space-2); }
+  #panel { order: 2; width: 100%; max-width: none; flex: 1 1 auto; min-height: 0; height: auto; border-right: none; border-top: 1px solid var(--line); padding: var(--space-3); }
+  .mapwrap { order: 1; flex: 0 0 auto; height: 30vh; min-height: 170px; max-height: 260px; transition: height .2s ease, max-height .2s ease; }
+  .mapwrap.big { height: 62vh; max-height: none; }
+  .map-toggle { display: inline-flex; position: absolute; right: 10px; bottom: 26px; z-index: 750; min-height: 32px; padding: 4px 10px; font-size: 12.5px; background: #fffffff2; box-shadow: var(--shadow); }
+  .top { flex-wrap: wrap; gap: var(--space-2); padding: 8px var(--space-3); }
   .proj { margin-left: 0; width: 100%; order: 3; }
   .proj select { width: auto; flex: 1; min-width: 0; }
   .brand .tagline, .top .ver { display: none; }
   .legend { display: none; }
-  .modebar { max-width: calc(100% - 24px); top: 8px; }
+  .modebar { max-width: calc(100% - 24px); top: 8px; font-size: 12px; }
+  .empty .card { padding: var(--space-3); max-width: 300px; }
+  .empty .card img { width: 36px; height: 36px; }
+  .empty .card h2 { font-size: 15px; }
+  .empty .card p { font-size: 12.5px; }
+}
+@media (max-width: 480px) {
+  .brand img { width: 28px; height: 28px; }
+  .brand .name { font-size: 16px; }
+  .top .btn, .proj button { min-height: 32px; padding: 4px 9px; font-size: 12.5px; }
+  .step > summary { padding: 8px var(--space-2); }
+  .step .body { padding: 0 var(--space-2) var(--space-2); }
+  .form { grid-template-columns: 1fr; }
+  .palette { grid-template-columns: repeat(4, 1fr); }
+  .palette button { min-height: 46px; font-size: 11px; }
+  .dims { grid-template-columns: 1fr 1fr; }
 }
 
 .trig { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); border-radius: var(--radius-sm); background: #f6f8fb; }

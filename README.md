@@ -53,8 +53,8 @@ A static demo with three sample projects runs on any phone or computer with no s
 - **Saving:** nothing is saved; reloading resets the demo.
 
 **Publish:**
-1. In the repo, go to Settings → Pages → Build and deployment → Source and choose **GitHub Actions**. Pages on a private repository needs a paid GitHub plan.
-2. Run **Publish online demo** from the Actions tab, or push to `main`. The site appears at `https://<owner>.github.io/<repo>/`.
+1. In the repo, go to Settings → Pages → Build and deployment → Source and choose **GitHub Actions**, not "Deploy from a branch". With "Deploy from a branch", GitHub shows the README instead of the demo. Pages on a private repository needs a paid GitHub plan.
+2. Push to the default branch, or run **Publish online demo** from the Actions tab. The site appears at `https://<owner>.github.io/<repo>/`.
 
 **Build locally:** `python packaging/build_demo.py site/`, then `python -m http.server -d site 8000`. The output is plain static files, so any static host works (Netlify, S3, an internal web server).
 

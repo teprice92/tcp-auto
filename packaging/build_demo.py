@@ -113,7 +113,13 @@ def main(out: Path, embed: bool = False) -> None:
     combos += [("ADOT", "", ""), ("tribal", "", ""), ("unknown", "", "")]
     for owner, city, county in combos:
         data["rules_preview"][f"{owner}|{city}|{county}"] = c.get("/api/rules/preview", params={"road_owner": owner, "city": city, "county": county}).json()
-    (out / "demo" / "data.json").write_text(json.dumps(data), encoding="utf-8")
+    # Stable ids so rebuilt sites have the same file paths (clean republishing)
+    text = json.dumps(data)
+    for i, pid in enumerate(list(data["projects"]), start=1):
+        fixed = f"de{i:010d}"
+        text = text.replace(pid, fixed)
+        (out / "demo" / pid).rename(out / "demo" / fixed)
+    (out / "demo" / "data.json").write_text(text, encoding="utf-8")
 
     # index.html: relative paths (works under any sub-path, e.g. user.github.io/repo/) and load the demo shim first
     html = (out / "index.html").read_text(encoding="utf-8")

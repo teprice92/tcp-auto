@@ -556,6 +556,16 @@ async function init() {
   $("#emlReport").onclick = () => { const to = $("#emailTo").value.trim(); window.location = link(`/api/projects/${state.project.id}/email.eml${to ? "?to=" + encodeURIComponent(to) : ""}`); };
 }
 
+// Phones: compact map with an Expand toggle (Leaflet must be told when its box changes size)
+$("#mapToggle").onclick = () => {
+  const wrap = $(".mapwrap");
+  const big = wrap.classList.toggle("big");
+  $("#mapToggle").textContent = big ? "Shrink map" : "Expand map";
+  $("#mapToggle").setAttribute("aria-expanded", String(big));
+  setTimeout(() => map.invalidateSize(), 220);
+};
+window.addEventListener("resize", () => map.invalidateSize());
+
 // Accordion: opening one step closes the others
 $$("#panel > details").forEach(d => d.addEventListener("toggle", () => {
   if (d.open) $$("#panel > details").forEach(o => { if (o !== d) o.open = false; });
