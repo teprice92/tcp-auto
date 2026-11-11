@@ -6,7 +6,7 @@
 electrical utility design drawings. (The code package is still named `tcp_auto`.)
 
 Upload a PDF drawing where work is labeled **Construct** / **Remove**. Then confirm the road on a
-map and enter the details the drawing doesn't have. TCP-Auto lays out a draft plan (signs, taper,
+map and enter the details the drawing doesn't have. FlagPole lays out a draft plan (signs, taper,
 buffer, cones/drums, arrow board, flaggers, police officer, trucks) using the MUTCD plus Arizona and
 East Valley city rules. Adjust it by drag-and-drop, then download a short PDF report (map,
 explanation, timeline) or an Outlook email draft to send to the city or county.
