@@ -9,6 +9,8 @@ Layering (see rules/README.md):
 
 from __future__ import annotations
 
+import copy
+import os
 import re
 from dataclasses import dataclass, field
 from functools import lru_cache
@@ -41,7 +43,7 @@ SOURCE_TITLES = {
     "aj-code-row": "Apache Junction City Code (ROW permits)",
     "mutcd-11": "FHWA MUTCD, 11th Edition",
     "user-reported": "Reported by utility staff (not yet found in a published document)",
-    "project": "TCP-Auto project default",
+    "project": "FlagPole project default",
 }
 
 
@@ -49,22 +51,78 @@ def slug(name: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", name.strip().lower()).strip("-")
 
 
-@lru_cache(maxsize=64)
-def _load_file(layer_id: str, rules_dir: str) -> dict:
-    path = Path(rules_dir) / f"{layer_id}.yaml"
+def local_rules_dir() -> Path:
+    """Rules accepted in the app (after review) live here, layered over the shipped rules/ files.
+
+    v1 keeps them with the local install's data; a shared database replaces this later."""
+    root = os.environ.get("TCP_DATA_DIR") or str(Path(__file__).resolve().parents[2] / "data")
+    return Path(root) / "rules_local"
+
+
+_generation = 0
+
+
+def invalidate_cache() -> None:
+    """Call after local rules change so the next resolve() re-reads files."""
+    global _generation
+    _generation += 1
+    _load_cached.cache_clear()
+    _local_sources.cache_clear()
+
+
+def _read_yaml(path: Path) -> dict:
+    if not path.exists():
+        return {}
     with open(path, encoding="utf-8") as f:
         return yaml.safe_load(f) or {}
 
 
+@lru_cache(maxsize=128)
+def _load_cached(layer_id: str, rules_dir: str, local_dir: str, gen: int) -> dict:
+    base = _read_yaml(Path(rules_dir) / f"{layer_id}.yaml")
+    over = _read_yaml(Path(local_dir) / f"{layer_id}.yaml")
+    if not base and not over:
+        raise FileNotFoundError(f"No rules layer '{layer_id}'")
+    merged = copy.deepcopy(base) if base else {}
+    if over:
+        merged.setdefault("jurisdiction", over.get("jurisdiction", {}))
+        if not base:
+            merged["status"] = over.get("status", "partial")
+        rules = dict(merged.get("rules") or {})
+        for key in over.get("removed_rules", []) or []:
+            rules.pop(key, None)
+        rules.update(over.get("rules") or {})
+        merged["rules"] = rules
+        merged["_local_keys"] = sorted((over.get("rules") or {}).keys())
+        merged["_local_only"] = not base
+    return merged
+
+
+def _load_file(layer_id: str, rules_dir: str) -> dict:
+    return _load_cached(layer_id, str(rules_dir), str(local_rules_dir()), _generation)
+
+
 def layer_exists(layer_id: str, rules_dir: Path = RULES_DIR) -> bool:
-    return (Path(rules_dir) / f"{layer_id}.yaml").exists()
+    return (Path(rules_dir) / f"{layer_id}.yaml").exists() or (local_rules_dir() / f"{layer_id}.yaml").exists()
+
+
+@lru_cache(maxsize=4)
+def _local_sources(local_dir: str, gen: int) -> dict:
+    return _read_yaml(Path(local_dir) / "sources.yaml")
+
+
+def source_title(src: str) -> str:
+    local = _local_sources(str(local_rules_dir()), _generation)
+    if src in local:
+        return local[src].get("title", src) if isinstance(local[src], dict) else str(local[src])
+    return SOURCE_TITLES.get(src, src)
 
 
 def cite_text(cite: dict | None) -> str:
     if not cite:
         return ""
     src = cite.get("source", "")
-    title = SOURCE_TITLES.get(src, src)
+    title = source_title(src)
     sec = cite.get("section")
     return f"{title}, {sec}" if sec else title
 

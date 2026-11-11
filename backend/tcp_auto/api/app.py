@@ -24,6 +24,8 @@ from ..geo import Centerline
 from ..ingest.pdf import ingest_pdf, render_page_png
 from ..models import Device, ExtractionResult, LatLon, Project, ProjectDetails, RoadContext, WorkItem
 from ..pipeline import PlanInputError, build_plan, recheck
+from ..rules import engine as rules_engine
+from ..rules import proposals as rule_proposals
 from ..rules.engine import resolve
 from ..site import osm
 from ..store.projects import ProjectStore
@@ -70,8 +72,14 @@ def _safe_name(project: Project, ext: str) -> str:
 
 @app.get("/api/config")
 def config() -> dict:
-    cities = sorted(p.stem.replace("-", " ").title() for p in (RULES_DIR / "cities" / "AZ").glob("*.yaml") if p.stem != "phoenix")
-    counties = sorted(p.stem.title() for p in (RULES_DIR / "counties" / "AZ").glob("*.yaml"))
+    def names(sub: str, skip=()):
+        found = set()
+        for root in (RULES_DIR, rules_engine.local_rules_dir()):
+            found |= {p.stem for p in (root / sub).glob("*.yaml")}
+        return sorted(n.replace("-", " ").title() for n in found if n not in skip)
+
+    cities = names("cities/AZ", skip=("phoenix",))
+    counties = names("counties/AZ")
     return {"version": __version__, "tile_url": TILE_URL, "tile_attribution": TILE_ATTRIBUTION, "cities": cities, "counties": counties}
 
 
@@ -299,6 +307,154 @@ def report_email(pid: str, to: str | None = None) -> Response:
     pdf = render_pdf(p)
     eml = build_eml(p, pdf, _safe_name(p, ".pdf"), to=to)
     return Response(eml, media_type="message/rfc822", headers={"Content-Disposition": f'attachment; filename="{_safe_name(p, ".eml")}"'})
+
+
+@app.get("/api/projects/{pid}/checklist.html", response_class=HTMLResponse)
+def checklist_html(pid: str) -> str:
+    from ..report.render import render_checklist_html
+
+    p = _get(pid)
+    if not p.plan:
+        raise HTTPException(400, "Generate a plan first")
+    return render_checklist_html(p)
+
+
+@app.get("/api/projects/{pid}/checklist.pdf")
+def checklist_pdf(pid: str) -> Response:
+    from ..report.render import render_checklist_pdf
+
+    p = _get(pid)
+    if not p.plan:
+        raise HTTPException(400, "Generate a plan first")
+    name = _safe_name(p, "").replace("TCP_", "Checklist_") + ".pdf"
+    return Response(render_checklist_pdf(p), media_type="application/pdf", headers={"Content-Disposition": f'attachment; filename="{name}"'})
+
+
+@app.get("/api/projects/{pid}/checklist")
+def checklist_json(pid: str) -> list[dict]:
+    from dataclasses import asdict
+
+    from ..report.checklist import build_checklist
+
+    p = _get(pid)
+    if not p.plan:
+        return []
+    return [asdict(s) for s in build_checklist(p)]
+
+
+# ---------------------------------------------------------------------------
+# Rules library, proposals, review
+# ---------------------------------------------------------------------------
+
+
+def _rules_error(e: Exception) -> HTTPException:
+    if isinstance(e, KeyError):
+        return HTTPException(404, "Proposal not found")
+    return HTTPException(400, str(e))
+
+
+@app.get("/api/rules/layers")
+def rules_layers() -> list[dict]:
+    return rule_proposals.list_layers()
+
+
+@app.get("/api/rules/layer")
+def rules_layer(id: str) -> dict:
+    try:
+        return rule_proposals.layer_rules(id)
+    except FileNotFoundError:
+        raise HTTPException(404, "Unknown rules layer")
+
+
+@app.get("/api/rules/keys")
+def rules_keys() -> list[dict]:
+    from ..rules.assistant import rule_keys
+    from ..rules.schema import CONDITIONS
+
+    return [{**k, "conditions": CONDITIONS} for k in rule_keys()]
+
+
+@app.get("/api/rules/proposals")
+def rules_proposals(status: str | None = None) -> list[dict]:
+    return [p.model_dump(mode="json", exclude={"source_text"}) for p in rule_proposals.list_all(status)]
+
+
+@app.get("/api/rules/proposals/{pid}")
+def rules_proposal(pid: str) -> rule_proposals.RuleProposal:
+    try:
+        return rule_proposals.get(pid)
+    except Exception as e:
+        raise _rules_error(e)
+
+
+@app.post("/api/rules/proposals")
+def rules_propose(p: rule_proposals.RuleProposal) -> rule_proposals.RuleProposal:
+    """Manual proposal (no AI). Still goes to review."""
+    p.origin, p.status, p.model = "manual", "pending", None
+    try:
+        return rule_proposals.create(p)
+    except Exception as e:
+        raise _rules_error(e)
+
+
+@app.post("/api/rules/proposals/draft")
+def rules_draft(payload: dict[str, Any] = Body(...)) -> rule_proposals.RuleProposal:
+    """AI-assisted proposal from pasted text. Needs an API key."""
+    from ..rules.assistant import AssistantError, draft
+
+    new = payload.get("new_layer")
+    try:
+        return draft(
+            layer_id=payload.get("layer_id", ""), new_layer=rule_proposals.NewLayer(**new) if new else None,
+            source_title=payload.get("source_title", ""), source_url=payload.get("source_url", ""),
+            text=payload.get("text", ""), author=payload.get("author", ""),
+        )
+    except AssistantError as e:
+        raise HTTPException(e.status, str(e))
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.put("/api/rules/proposals/{pid}")
+def rules_edit(pid: str, changes: list[rule_proposals.RuleChange] = Body(...)) -> rule_proposals.RuleProposal:
+    try:
+        p = rule_proposals.get(pid)
+        if p.status != "pending":
+            raise ValueError(f"Proposal is already {p.status}.")
+        p.changes = changes
+        return rule_proposals.save(rule_proposals.validate(p))
+    except Exception as e:
+        raise _rules_error(e)
+
+
+@app.post("/api/rules/proposals/{pid}/accept")
+def rules_accept(pid: str, payload: dict[str, Any] = Body(...)) -> rule_proposals.RuleProposal:
+    try:
+        return rule_proposals.accept(pid, payload.get("reviewer", ""), bool(payload.get("verified")), payload.get("note", ""))
+    except Exception as e:
+        raise _rules_error(e)
+
+
+@app.post("/api/rules/proposals/{pid}/reject")
+def rules_reject(pid: str, payload: dict[str, Any] = Body(...)) -> rule_proposals.RuleProposal:
+    try:
+        return rule_proposals.reject(pid, payload.get("reviewer", ""), payload.get("note", ""))
+    except Exception as e:
+        raise _rules_error(e)
+
+
+@app.get("/api/settings/ai")
+def ai_settings() -> dict:
+    from ..rules.assistant import settings_status
+
+    return settings_status()
+
+
+@app.put("/api/settings/ai")
+def ai_settings_update(payload: dict[str, Any] = Body(...)) -> dict:
+    from ..rules.assistant import save_settings
+
+    return save_settings(api_key=payload.get("api_key"), model=payload.get("model"), clear_key=bool(payload.get("clear_key")))
 
 
 # ---------------------------------------------------------------------------

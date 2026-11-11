@@ -13,8 +13,29 @@ def test_report_html_has_core_sections(make_project):
     p = make_project(description="replace two poles")
     p.plan, _, _ = build_plan(p)
     h = render_html(p)
-    for s in ["Traffic Control Plan", "What is happening", "Timeline", "replace two poles", "<svg", "DRAFT"]:
+    for s in ["Traffic Control Plan", "What is happening", "Timeline", "replace two poles", "<svg", "Submitted for agency review",
+              "Traffic control provided", "Standards followed"]:
         assert s in h
+    # internal to-dos stay off the agency submittal
+    for s in ["confirm with agency", "Requirements &amp; checklist", "Review notes", "Submit the TCP at least"]:
+        assert s not in h
+
+
+def test_checklist_has_gotchas(make_project):
+    from tcp_auto.report.checklist import build_checklist
+    from tcp_auto.report.render import render_checklist_html
+
+    p = make_project(school_zone=True)
+    p.road.speed_confirmed = False
+    p.plan, _, _ = build_plan(p)
+    sections = {s.title: s for s in build_checklist(p)}
+    before = " ".join(i.text for i in sections["Before you submit"].items)
+    assert "qualified person" in before and "posted speed" in before and "3 full working days" in before
+    bookings = sections["Bookings & scheduling"].items
+    assert any("Book a police officer" in i.text and i.tag == "confirm with agency" for i in bookings)
+    assert any("07:00-08:30" in i.text for i in bookings)
+    h = render_checklist_html(p)
+    assert "do not submit to the agency" in h
 
 
 def test_eml_is_unsent_draft_with_pdf(make_project):

@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Crew checklist – {{ d.project_name or d.address or "Project" }} · FlagPole</title>
+<style>
+  @page { size: letter portrait; margin: 0.5in; }
+  :root { --ink:#142033; --muted:#5a6b80; --line:#dde3ea; --blue:#0a5cad; --navy:#0b2545; --blue-50:#eef5fd; --red:#b42318; --amber:#a15c07; }
+  * { box-sizing: border-box; }
+  body { font-family: Arial, Helvetica, sans-serif; color: var(--ink); margin: 0; font-size: 11px; line-height: 1.4; }
+  header { display: flex; align-items: center; gap: 12px; background: linear-gradient(90deg, var(--navy), #0b3d78); color: #fff; border-radius: 8px; padding: 10px 12px; }
+  header svg { width: 40px; height: 40px; flex: none; }
+  header h1 { margin: 0; font-size: 18px; }
+  header .sub { color: #c5dcf5; font-size: 11px; }
+  .notice { margin: 8px 0 4px; padding: 6px 10px; border-radius: 6px; background: #fff4e5; border: 1px solid #f5b06a; color: #7a3300; font-weight: bold; }
+  h2 { font-size: 12.5px; color: var(--blue); text-transform: uppercase; letter-spacing: .04em; border-bottom: 2px solid #dbeafb; padding-bottom: 2px; margin: 14px 0 4px; }
+  ul { list-style: none; margin: 0; padding: 0; }
+  li { display: grid; grid-template-columns: 18px 1fr; gap: 6px; padding: 5px 0; border-bottom: 1px solid var(--line); page-break-inside: avoid; }
+  .box { width: 12px; height: 12px; border: 1.5px solid var(--ink); border-radius: 2px; margin-top: 1px; }
+  li.error .box { border-color: var(--red); } li.warn .box { border-color: var(--amber); }
+  li.info .box { border-style: dotted; border-color: var(--muted); }
+  li.error .t { color: var(--red); font-weight: bold; }
+  .cite { display: block; color: var(--muted); font-size: 9.5px; }
+  .tag { display: inline-block; font-size: 9px; font-weight: bold; padding: 0 5px; border-radius: 8px; background: #fef0c7; color: #93370d; margin-left: 4px; }
+  footer { margin-top: 12px; font-size: 9px; color: var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  {{ logo | safe }}
+  <div>
+    <h1>Crew checklist</h1>
+    <div class="sub">{{ d.project_name or "Utility work" }} · {{ road.name }}{% if d.city %}, {{ d.city }}{% endif %} · Job {{ d.job_number or "—" }} · {{ today }}</div>
+  </div>
+</header>
+<div class="notice">Internal – do not submit to the agency. These are the to-dos and gotchas for this job.</div>
+{% for s in sections %}
+<h2>{{ s.title }}</h2>
+<ul>
+  {% for i in s.items %}
+  <li class="{{ i.level }}"><span class="box"></span><span><span class="t">{{ i.text }}</span>{% if i.tag %}<span class="tag">{{ i.tag }}</span>{% endif %}{% if i.cite %}<span class="cite">{{ i.cite }}</span>{% endif %}</span></li>
+  {% endfor %}
+</ul>
+{% endfor %}
+<footer>Prepared with FlagPole {{ version }}. Items marked "confirm with agency" come from rules that haven't been checked against the agency's current document.</footer>
+</body>
+</html>

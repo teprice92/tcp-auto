@@ -20,6 +20,7 @@
     <button id="dupProject" class="btn" title="Copy this project as a starting point">Duplicate</button>
   </div>
   <div class="spacer"></div>
+  <button id="openRules" class="btn" title="View and update city, county, state, and federal rules">Rules <span id="rulesBadge" class="count hidden">0</span></button>
   <span class="ver" id="version"></span>
 </header>
 
@@ -133,7 +134,7 @@
         </div>
         <div class="actions"><button id="deleteDevice" class="danger" disabled>Delete selected</button><span class="hint">Drag devices on the map. Checks update after each move.</span></div>
         <h3>Checks</h3><ul id="issues" class="issues"></ul>
-        <h3>Requirements</h3><ul id="reqs" class="issues"></ul>
+        <h3>Your to-dos <span class="muted" style="text-transform:none;letter-spacing:0">(not on the agency report)</span></h3><ul id="reqs" class="issues"></ul>
         <h3>Dimensions</h3><div id="dims" class="dims"></div>
       </div>
     </details>
@@ -141,13 +142,20 @@
     <details class="step" id="step-report">
       <summary><span class="num">5</span><span class="title">Report</span><span class="chip" data-chip="report">Waiting for plan</span></summary>
       <div class="body">
+        <h3 style="margin-top:4px">For the agency</h3>
         <div class="report-actions">
           <button id="previewReport">Preview</button>
           <button id="pdfReport" class="primary">Download PDF</button>
           <button id="emlReport">Email draft</button>
         </div>
         <div class="form"><label class="wide">Send to <input id="emailTo" type="email" placeholder="permit office email"></label></div>
-        <div class="hint">The email draft opens in Outlook with the PDF attached. Review it and send from your own mailbox.</div>
+        <div class="hint">The email draft opens in Outlook with the plan PDF attached. Review it and send from your own mailbox.</div>
+        <h3>For you and the crew</h3>
+        <div class="report-actions" style="grid-template-columns:1fr 1fr">
+          <button id="previewChecklist">Preview checklist</button>
+          <button id="pdfChecklist">Download checklist</button>
+        </div>
+        <div class="hint">Permits, lead times, bookings, open review notes, and on-site reminders. Not included in the agency report.</div>
       </div>
     </details>
   </aside>
@@ -169,10 +177,80 @@
   </div>
 </main>
 
+<section id="rulesView" class="rulesview hidden" aria-label="Rules">
+  <div class="rv-top">
+    <h2>Rules</h2>
+    <nav id="rulesTabs" class="tabs">
+      <button data-tab="library" class="on">Library</button>
+      <button data-tab="propose">Propose a change</button>
+      <button data-tab="review">Review <span id="reviewCount" class="count hidden">0</span></button>
+      <button data-tab="settings">AI settings</button>
+    </nav>
+    <button id="closeRules" class="btn">Close</button>
+  </div>
+  <div class="rv-body">
+    <div id="rtab-library" class="rtab lib"><div id="layerList" class="layers"></div><div id="layerDetail" class="ldetail"></div></div>
+
+    <div id="rtab-propose" class="rtab hidden narrow">
+      <p class="lead">Add or update a rule from an agency document. Every change goes to <b>Review</b> before the planner uses it.</p>
+      <div class="form">
+        <label class="wide">Jurisdiction <select id="pLayer"></select></label>
+        <div id="pNew" class="wide hidden row2">
+          <label>Level <select id="pNewLevel"><option value="city">City / town</option><option value="county">County</option></select></label>
+          <label>Name <input id="pNewName" placeholder="e.g. Scottsdale"></label>
+        </div>
+        <label>Source document title <input id="pTitle" placeholder="e.g. Mesa Temporary Traffic Control Manual, 2nd Ed."></label>
+        <label>Link (optional) <input id="pUrl" placeholder="https://…"></label>
+        <label>Your name <input id="pAuthor"></label>
+        <div></div>
+      </div>
+      <div class="card2">
+        <div class="card2-h"><h3>Draft with AI</h3><div id="aiState"></div></div>
+        <textarea id="pText" rows="9" placeholder="Paste the section of the manual or permit conditions here…"></textarea>
+        <div class="row"><button id="pDraft" class="primary">Draft with AI</button><span class="hint">The AI only drafts. It quotes the text for each rule so the reviewer can check it.</span></div>
+      </div>
+      <div class="card2">
+        <div class="card2-h"><h3>Or write it manually</h3></div>
+        <div class="form">
+          <label class="wide">Rule <select id="mKey"></select></label>
+          <div id="mHelp" class="hint wide"></div>
+          <label class="wide">Value (JSON) <textarea id="mValue" rows="7" spellcheck="false" class="mono"></textarea></label>
+          <label>Section <input id="mSection" placeholder="e.g. 4.2"></label>
+          <label>Supporting quote <input id="mQuote" placeholder="exact sentence from the document"></label>
+          <div class="sub-cta"><button type="button" id="mAdd">Add to proposal</button></div>
+        </div>
+        <ul id="mList" class="items"></ul>
+        <div class="sub-cta"><button id="mSubmit" class="primary" disabled>Send to review</button></div>
+      </div>
+    </div>
+
+    <div id="rtab-review" class="rtab hidden narrow">
+      <p class="lead">Check each change against the source, edit if needed, then accept or reject. Accepted rules are saved with this install of FlagPole and used for new plans.</p>
+      <div id="reviewList"></div>
+      <h3>Recently reviewed</h3>
+      <ul id="reviewHistory" class="hist"></ul>
+    </div>
+
+    <div id="rtab-settings" class="rtab hidden narrow">
+      <p class="lead">AI drafting uses the Claude API. Without a key you can still add rules manually.</p>
+      <div class="card2">
+        <div id="aiStatus"></div>
+        <div class="form">
+          <label class="wide">API key <input id="aiKey" type="password" autocomplete="off" placeholder="sk-ant-…"></label>
+          <label class="wide">Model <input id="aiModel"></label>
+          <div class="sub-cta"><button id="aiClear" class="danger">Remove saved key</button>&nbsp;<button id="aiSave" class="primary">Save</button></div>
+        </div>
+        <div class="hint">The key is stored on the FlagPole server, never shown again in the browser, and only used to draft rules. Setting <code>ANTHROPIC_API_KEY</code> on the server works too.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
 <dialog id="dlg"><form method="dialog" id="dlgForm"><h2 id="dlgTitle"></h2><div id="dlgBody"></div><div class="foot"><button value="ok" class="primary" id="dlgOk">OK</button><button value="cancel" formnovalidate>Cancel</button></div></form></dialog>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
 <script src="/static/vendor/leaflet/leaflet.js"></script>
 <script src="/static/app.js"></script>
+<script src="/static/rules.js"></script>
 </body>
 </html>

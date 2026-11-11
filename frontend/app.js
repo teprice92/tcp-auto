@@ -549,6 +549,8 @@ async function init() {
 
   $("#previewReport").onclick = () => window.open(`/api/projects/${state.project.id}/report.html`, "_blank");
   $("#pdfReport").onclick = () => { window.location = `/api/projects/${state.project.id}/report.pdf`; };
+  $("#previewChecklist").onclick = () => window.open(`/api/projects/${state.project.id}/checklist.html`, "_blank");
+  $("#pdfChecklist").onclick = () => { window.location = `/api/projects/${state.project.id}/checklist.pdf`; };
   $("#emlReport").onclick = () => { const to = $("#emailTo").value.trim(); window.location = `/api/projects/${state.project.id}/email.eml${to ? "?to=" + encodeURIComponent(to) : ""}`; };
 }
 

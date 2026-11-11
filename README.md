@@ -31,7 +31,8 @@ explanation, timeline) or an Outlook email draft to send to the city or county.
 | Night work | Detected from sunset/sunrise and city rules; drums, lit signs, light towers |
 | Drag-and-drop editor with live compliance checks | Working |
 | Report (PDF) and email draft (.eml for Outlook) | Working |
-| LLM assistant | Not yet (placeholder in plan) |
+| Rules editor | Library of all federal/state/county/city rules; propose changes with AI drafting (Claude API key) or manually; review queue with diff, edit, accept/reject; accepted rules saved locally and used by the planner |
+| Agency report vs. crew checklist | Report shows only what the agency needs; permits, lead times, bookings, open review notes, and gotchas go on a separate internal checklist |
 | Sign-in | Optional shared access key (`TCP_ACCESS_KEY`); invite-only sign-in planned |
 
 ## Brand
@@ -79,6 +80,19 @@ cd backend && python -m pytest -q
 | `TCP_TILE_URL` / `TCP_TILE_ATTRIBUTION` | Map tiles. Use a hosted provider in production (OSM's public tiles don't allow heavy use) | OSM standard tiles |
 | `TCP_OVERPASS_URL`, `TCP_NOMINATIM_URL` | Map data services | public OSM endpoints |
 | `TCP_CHROMIUM` | Path to a Chromium binary for PDF rendering, if Playwright's isn't installed | auto |
+| `ANTHROPIC_API_KEY` | Claude API key for AI rule drafting (or save one in Rules → AI settings) | unset |
+| `TCP_LLM_MODEL` | Model for rule drafting | `claude-opus-5-5` |
+
+## Updating rules
+
+Open **Rules** in the top bar:
+- **Library:** every rules layer (federal, state, county, city) and what it contains, with citations and whether each rule is verified.
+- **Propose a change:** pick a jurisdiction (or add a new city or county) and enter the source document title. Then either paste the manual's text and click **Draft with AI**, or write the rule manually from a template.
+- **Review:** each change shows the current and proposed values, the supporting quote and any validation problems. The reviewer can edit, then **accept** or **reject**. Ticking "I checked every change against the source document" marks the rules verified; otherwise they show "confirm with agency".
+
+Accepted rules are written to `<TCP_DATA_DIR>/rules_local/` as an overlay on the shipped `rules/` files, with a `changelog.jsonl`. That overlay is shared by everyone using the same FlagPole server; a database comes later for multi-server setups. A verified trigger replaces an unverified one with the same condition.
+
+The AI only drafts. Every value goes through the same validator as manual entries, and nothing reaches the planner until it's accepted. Drafting sends the pasted text, not drawings, to the Claude API. It uses Claude Opus 5.5 with server-side refusal fallback enabled (`fallbacks: "default"`).
 
 ## Deploy
 
