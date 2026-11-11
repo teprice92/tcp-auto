@@ -16,6 +16,7 @@ from ..models import DeviceType, LatLon, ProjectDetails, RoadContext, TcpPlan
 W, H = 1000, 370
 MARGIN_X = 40
 ROAD_Y = 182  # screen y of the centerline
+HALO = ' stroke="#f5f8fb" stroke-width="3" paint-order="stroke" stroke-linejoin="round"'  # keeps labels readable over pavement
 
 
 def _esc(s: str) -> str:
@@ -54,13 +55,6 @@ def render_plan_svg(plan: TcpPlan, road: RoadContext, details: ProjectDetails) -
         f'<rect x="0" y="0" width="{W}" height="{H}" fill="#f5f8fb"/>',
     ]
 
-    # Cross streets
-    for ix in road.intersections:
-        if s_min <= ix.station_ft <= s_max:
-            x = X(ix.station_ft)
-            out.append(f'<rect x="{x - 22:.1f}" y="10" width="44" height="{H - 20}" fill="#cfd6df"/>')
-            out.append(f'<text x="{x + 4:.1f}" y="24" font-size="11" fill="#444" transform="rotate(90 {x + 4:.1f} 24)">{_esc(ix.cross_street)}{" (signal)" if ix.signalized else ""}</text>')
-
     # Sidewalk/shoulder strips and road
     out.append(f'<rect x="{MARGIN_X - 20}" y="{Y(left_edge) - 26:.1f}" width="{W - 2 * MARGIN_X + 40}" height="{road_w * sy + 52:.1f}" fill="#e3e8ee"/>')
     out.append(f'<rect x="{MARGIN_X - 20}" y="{Y(left_edge):.1f}" width="{W - 2 * MARGIN_X + 40}" height="{road_w * sy:.1f}" fill="#6b6f74"/>')
@@ -73,6 +67,12 @@ def render_plan_svg(plan: TcpPlan, road: RoadContext, details: ProjectDetails) -
         else:
             out.append(f'<line x1="{MARGIN_X - 20}" y1="{Y(off):.1f}" x2="{W - MARGIN_X + 20}" y2="{Y(off):.1f}" stroke="#fff" stroke-width="1.5" stroke-dasharray="14 12"/>')
 
+    # Cross streets, drawn over the main road so the crossing reads as an intersection
+    top, bot = Y(left_edge), Y(right_edge)
+    for ix in road.intersections:
+        if s_min - 40 <= ix.station_ft <= s_max + 40:
+            out.append(_intersection(X(ix.station_ft), max(40.0, 64 * sx), top, bot, ix.cross_street, ix.signalized))
+
     # Direction arrows
     if not road.one_way:
         out.append(_arrow(MARGIN_X + 10, Y(right_edge - w / 2), 1))
@@ -80,7 +80,7 @@ def render_plan_svg(plan: TcpPlan, road: RoadContext, details: ProjectDetails) -
     else:
         out.append(_arrow(MARGIN_X + 10, Y(0), 1))
     if road.name:
-        out.append(f'<text x="{W - MARGIN_X - 6}" y="{Y(right_edge) + 18:.1f}" font-size="13" font-weight="bold" fill="#333" text-anchor="end">{_esc(road.name)}</text>')
+        out.append(f'<text x="{W - MARGIN_X - 6}" y="{Y(right_edge) + 18:.1f}" font-size="13" font-weight="bold" fill="#333" text-anchor="end"{HALO}>{_esc(road.name)}</text>')
 
     # Zones
     colors = {"buffer": ("#ffffff", 0.35), "taper": ("#f07c1b", 0.25), "reduced_speed": ("#2b6cb0", 0.08)}
@@ -131,7 +131,7 @@ def render_plan_svg(plan: TcpPlan, road: RoadContext, details: ProjectDetails) -
                 row += 1
             label_rows[key * 10 + row + (0 if above else 5)] = x
             ly = y - 12 - row * 12 if above else y + 20 + row * 12
-            out.append(f'<text x="{x:.1f}" y="{ly:.1f}" font-size="10" text-anchor="middle" fill="#222" font-weight="bold">{_esc(dv.code or "")}</text>')
+            out.append(f'<text x="{x:.1f}" y="{ly:.1f}" font-size="10" text-anchor="middle" fill="#222" font-weight="bold"{HALO}>{_esc(dv.code or "")}</text>')
 
     # Dimension callouts (affected direction)
     dims = plan.dimensions
@@ -149,7 +149,12 @@ def render_plan_svg(plan: TcpPlan, road: RoadContext, details: ProjectDetails) -
         out.append(f'<line x1="{xa:.1f}" y1="{yb:.1f}" x2="{xb:.1f}" y2="{yb:.1f}" stroke="#333" stroke-width="1"/>')
         for xx in (xa, xb):
             out.append(f'<line x1="{xx:.1f}" y1="{yb - 5:.1f}" x2="{xx:.1f}" y2="{yb + 5:.1f}" stroke="#333" stroke-width="1"/>')
-        out.append(f'<text x="{(xa + xb) / 2:.1f}" y="{yb + (14 if near_edge > 0 else -6):.1f}" font-size="11" text-anchor="middle" fill="#222">{text}</text>')
+        out.append(f'<text x="{(xa + xb) / 2:.1f}" y="{yb + (14 if near_edge > 0 else -6):.1f}" font-size="11" text-anchor="middle" fill="#222"{HALO}>{text}</text>')
+
+    # Cross-street names last, so nothing covers them
+    for ix in road.intersections:
+        if s_min - 40 <= ix.station_ft <= s_max + 40:
+            out.append(_intersection_label(X(ix.station_ft), max(40.0, 64 * sx), ix.cross_street, ix.signalized))
 
     # North arrow and scale bar
     rot = 90 - cl.bearing_deg((dims.work_start_station_ft + dims.work_end_station_ft) / 2)
@@ -158,12 +163,57 @@ def render_plan_svg(plan: TcpPlan, road: RoadContext, details: ProjectDetails) -
         f'<text x="0" y="22" font-size="11" text-anchor="middle" font-weight="bold" transform="rotate({-rot:.1f} 0 18)">N</text></g>'
     )
     bar_ft = _nice(200 / sx)
+    out.append(f'<rect x="{MARGIN_X - 6}" y="{H - 38}" width="{bar_ft * sx + 360:.1f}" height="28" rx="3" fill="#f5f8fb" fill-opacity="0.92"/>')
     out.append(f'<g transform="translate({MARGIN_X},{H - 22})"><rect width="{bar_ft * sx / 2:.1f}" height="6" fill="#222"/>'
                f'<rect x="{bar_ft * sx / 2:.1f}" width="{bar_ft * sx / 2:.1f}" height="6" fill="#fff" stroke="#222"/>'
                f'<text x="0" y="-4" font-size="10">0</text><text x="{bar_ft * sx:.1f}" y="-4" font-size="10" text-anchor="end">{bar_ft:.0f} ft</text>'
                f'<text x="{bar_ft * sx + 12:.1f}" y="6" font-size="10" fill="#555">Lengths to scale; lateral widths exaggerated. Road shown straightened.</text></g>')
     out.append("</svg>")
     return "".join(out)
+
+
+def _intersection(x: float, width: float, top: float, bot: float, name: str, signalized: bool) -> str:
+    """A cross street at screen x crossing the main road band (top..bot): asphalt, crosswalks, stop
+    bars, center line, signal heads and a name tag."""
+    h = width / 2
+    g = [f'<g class="cross-street">',
+         f'<rect x="{x - h:.1f}" y="0" width="{width:.1f}" height="{H - 34}" fill="#6b6f74"/>',
+         f'<rect x="{x - h - 3:.1f}" y="0" width="3" height="{H - 34}" fill="#c4ccd6"/>',
+         f'<rect x="{x + h:.1f}" y="0" width="3" height="{H - 34}" fill="#c4ccd6"/>']
+    # cross street's center line, outside the main road
+    for y0, y1 in ((0, top - 14), (bot + 14, H - 34)):
+        if y1 > y0:
+            g.append(f'<line x1="{x - 1.5:.1f}" y1="{y0}" x2="{x - 1.5:.1f}" y2="{y1:.1f}" stroke="#f2c230" stroke-width="1.5"/>'
+                     f'<line x1="{x + 1.5:.1f}" y1="{y0}" x2="{x + 1.5:.1f}" y2="{y1:.1f}" stroke="#f2c230" stroke-width="1.5"/>')
+    # crosswalks across the cross street (just outside the main road) and across the main road (beside the box)
+    for yc in (top - 8, bot + 8):
+        g.append(f'<line x1="{x - h + 2:.1f}" y1="{yc:.1f}" x2="{x + h - 2:.1f}" y2="{yc:.1f}" stroke="#fff" stroke-width="9" stroke-dasharray="3 3"/>')
+    for xc in (x - h - 9, x + h + 9):
+        g.append(f'<line x1="{xc:.1f}" y1="{top + 2:.1f}" x2="{xc:.1f}" y2="{bot - 2:.1f}" stroke="#fff" stroke-width="9" stroke-dasharray="3 3"/>')
+    # stop bars on the main road approaches (right-hand traffic: lower half eastbound, upper half westbound)
+    mid = (top + bot) / 2
+    g.append(f'<line x1="{x - h - 17:.1f}" y1="{mid + 3:.1f}" x2="{x - h - 17:.1f}" y2="{bot - 2:.1f}" stroke="#fff" stroke-width="3"/>')
+    g.append(f'<line x1="{x + h + 17:.1f}" y1="{top + 2:.1f}" x2="{x + h + 17:.1f}" y2="{mid - 3:.1f}" stroke="#fff" stroke-width="3"/>')
+    if signalized:
+        for sx_, sy_ in ((x - h - 6, top - 22), (x + h + 6, bot + 22)):
+            g.append(f'<rect x="{sx_ - 4:.1f}" y="{sy_ - 10:.1f}" width="8" height="20" rx="2" fill="#1f2328"/>'
+                     f'<circle cx="{sx_:.1f}" cy="{sy_ - 6:.1f}" r="2.2" fill="#e5484d"/>'
+                     f'<circle cx="{sx_:.1f}" cy="{sy_:.1f}" r="2.2" fill="#f5c518"/>'
+                     f'<circle cx="{sx_:.1f}" cy="{sy_ + 6:.1f}" r="2.2" fill="#30a46c"/>')
+    g.append("</g>")
+    return "".join(g)
+
+
+def _intersection_label(x: float, width: float, name: str, signalized: bool) -> str:
+    """Name tag beside the cross street at the top (beside, so signs placed on the street stay visible)."""
+    label = _esc(name or "Cross street") + (" \u00b7 signal" if signalized else "")
+    tw = 6.4 * len(name or "Cross street") + (44 if signalized else 0) + 16
+    lx = x + width / 2 + 8  # right of the street, or left of it near the right edge
+    if lx + tw > W - 4:
+        lx = x - width / 2 - 8 - tw
+    lx = max(4.0, lx)
+    return (f'<rect x="{lx:.1f}" y="6" width="{tw:.1f}" height="20" rx="10" fill="#1a365d"/>'
+            f'<text x="{lx + tw / 2:.1f}" y="20" font-size="11.5" font-weight="bold" fill="#fff" text-anchor="middle">{label}</text>')
 
 
 def _arrow(x: float, y: float, d: int) -> str:
