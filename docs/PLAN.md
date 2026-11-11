@@ -29,6 +29,15 @@ Automated **Traffic Control Plan (TCP)** drafting from electrical/utility design
 design PDF is only an *input* that tells the app where the work is and what is being done. All
 TCP drawings are generated fresh on a real street map.
 
+### Project context (confirmed)
+- **Organization:** an electrical utility company (one organization plus outside consultants).
+- **Pilot area:** **Arizona: Maricopa County and Pinal County** (see §3.6.1).
+- **Users:** designers, engineers, inspectors, schedulers, and construction consultants (see §3.10).
+- **Report:** no county-mandated format. Must include a **map highlighting the main elements**,
+  a **brief explanation**, and a **timeline** (see §3.9).
+- **Missing information** on drawings (dates, hours, speed, contacts, etc.) is entered by the user (see §3.2.1).
+- **Deployment:** hosted web app (see §5.1).
+
 **Design principle:** deterministic software does the work wherever possible. An **LLM is an
 optional, pluggable assistant** (placeholder at first) for the fuzzy parts: reading notes,
 resolving ambiguous symbols, picking the centerpoint, and sanity-checking the layout. Every LLM
@@ -103,6 +112,26 @@ Heuristics, applied in order, configurable per utility:
 
 Items with low confidence get flagged for the **LLM assistant** (placeholder) and then for user confirmation.
 
+### 3.2.1 Project details form (user input fills the gaps)
+
+Many drawings won't contain everything the TCP and report need. Each project has a **project
+details form**. Fields are pre-filled from the drawing when the app can find them, and the user
+enters or corrects the rest. Every field shows a source badge: `from drawing`, `from map (OSM)`,
+`rule default`, or `entered by <user>`.
+
+| Group | Fields |
+|---|---|
+| Job | Work order / job #, permit #, project name, utility circuit/feeder, description of work (e.g., "Replace 2 poles and transfer conductors") |
+| Location | Address or intersection, city/unincorporated area (auto-detected, see §3.6.1), side of road, map pin |
+| Road | Posted speed (**must be confirmed**), lanes, divided/undivided, one-way, bike lane, sidewalk, nearby signals |
+| Equipment | Number and type of trucks (default: 2 large trucks), need for crane/digger, material staging |
+| Timeline | Start date, end date or duration, daily work hours, days of week, night work?, phases (see §3.9) |
+| Traffic control | Flaggers (count), police officer requested/required, reduced speed requested, pedestrian detour needed |
+| Contacts | Designer/preparer, field supervisor, 24-hour emergency contact, traffic control contractor |
+
+Required fields are checked before a report can be generated. Missing values are listed clearly,
+for example "Posted speed not confirmed".
+
 ### 3.3 Locating the work on the map
 
 Because the TCP is drawn on a street map and not on the design sheet, we don't need a precise
@@ -150,11 +179,13 @@ Rules are **data, not code**. They live in versioned YAML files layered by juris
 
 ```
 rules/
-  federal/mutcd-11th-ed.yaml        # baseline (FHWA MUTCD Part 6, Temporary Traffic Control)
-  states/TX.yaml                    # e.g., Texas MUTCD differences, TxDOT standards
-  states/CA.yaml
-  counties/TX/travis.yaml           # local ROW permit / police / hours rules
-  cities/TX/austin.yaml
+  federal/mutcd.yaml                # baseline (FHWA MUTCD Part 6, Temporary Traffic Control)
+  states/AZ.yaml                    # Arizona Supplement differences
+  states/AZ-adot.yaml               # ADOT rules for state routes
+  counties/AZ/maricopa.yaml         # MCDOT permit / police / hours rules
+  counties/AZ/pinal.yaml            # Pinal County Public Works rules
+  cities/AZ/phoenix.yaml            # city barricade manual / permit conditions
+  cities/AZ/mesa.yaml               # ...one file per city as they are added
   utilities/<utility>.yaml          # symbology + company safety policy (can be stricter)
 ```
 
@@ -195,23 +226,62 @@ TA-22 lane closure near an intersection, TA-33 stationary lane closure on a divi
 Example rule snippet:
 
 ```yaml
-jurisdiction: { level: county, state: TX, name: Travis }
-extends: states/TX.yaml
+jurisdiction: { level: county, state: AZ, name: Maricopa, agency: MCDOT }
+extends: states/AZ.yaml
+applies_to: { road_owner: county }        # unincorporated county roads only
+submittal:
+  method: email                           # or: portal
+  recipient: "<permit office address>"    # placeholder
 rules:
   police_required:
     any:
-      - road_class: [arterial, highway]
+      - road_class: [arterial]
       - speed_mph: { gte: 45 }
       - signalized_intersection_in_zone: true
-    citation: "Travis Co. ROW Permit Conditions §4.2 (placeholder)"
+    citation: "PLACEHOLDER - verify against MCDOT permit conditions"
   work_hours:
-    lane_closure_allowed: ["09:00-15:30"]
-    citation: "placeholder"
+    lane_closure_allowed: ["09:00-15:00"]  # placeholder
+    citation: "PLACEHOLDER"
   min_work_area_ft: 250
 ```
 
 > Real jurisdiction files must be written from the actual adopted documents. The values above
-> are placeholders. This repo should ship **federal baseline + one pilot state/county** first.
+> are placeholders. This repo should ship **federal baseline + Arizona + Maricopa/Pinal** first.
+
+#### 3.6.1 Pilot jurisdictions: Arizona, Maricopa County, Pinal County
+
+**Which rules apply depends on who owns the road**, not just which county the work is in. Inside
+Maricopa and Pinal counties there are three main road owners:
+
+| Road owner | Examples | Rule chain |
+|---|---|---|
+| **ADOT** (state routes, interstates, US routes) | I-10, SR-87, SR-347, US-60 | Federal → Arizona → ADOT |
+| **County** (unincorporated areas) | MCDOT roads; Pinal County roads in areas like San Tan Valley | Federal → Arizona → county |
+| **City / town** (incorporated areas) | Phoenix, Mesa, Chandler, Gilbert, Scottsdale, Tempe, Glendale; Casa Grande, Maricopa, Florence, Apache Junction | Federal → Arizona → county (if it applies) → city |
+
+The app resolves the owner automatically from GIS layers: city/town limits, ADOT route centerlines,
+and county road inventories (most are published as open data). The user can override it. The
+owner also decides **who receives the report** (which permit office to email).
+
+Source documents to obtain and encode (verify the current edition and exact titles):
+- **FHWA MUTCD** and the **Arizona Supplement**. Confirm which MUTCD edition ADOT currently adopts.
+- **ADOT** traffic control design guidelines and standard traffic control drawings (for state routes and permits).
+- **MAG** (Maricopa Association of Governments) Uniform Standard Specifications and Details, used by many Maricopa cities.
+- **MCDOT** right-of-way permit and traffic control requirements (unincorporated Maricopa County).
+- **Pinal County Public Works** right-of-way / encroachment permit requirements.
+- **City barricade manuals and permit conditions**, starting with the cities where the utility
+  works most (e.g., the City of Phoenix traffic barricade manual).
+
+Arizona-specific rule topics to capture:
+- Peak-hour lane-closure restrictions on arterials (common in metro Phoenix cities). Exact hours vary by agency.
+- When **off-duty police officers** are required (e.g., signalized intersections, arterials, high speed).
+  This varies by city and must come from each agency's documents.
+- Work in or near **signalized intersections**, which often needs separate signal or traffic engineering approval.
+- Pedestrian/ADA accommodation where sidewalks are closed.
+- Report delivery: permit office email or permit portal per agency (stored in the jurisdiction file).
+
+**Pilot order (suggested):** (1) unincorporated Maricopa and Pinal county roads, (2) the 2–3 cities
+with the most utility work, (3) ADOT state routes, (4) the remaining cities.
 
 ### 3.7 Layout generator
 
@@ -255,20 +325,39 @@ The main output is a **self-contained PDF report** that a county or city reviewe
 email and understand without the app or the design plans. It both **illustrates** the plan (maps,
 diagrams) and **explains** it (plain-language narrative).
 
-**Report contents** (template-driven, configurable per jurisdiction):
+Maricopa and Pinal don't require a specific format, so the default report is **short and
+visual**: the core is a map, a brief explanation, and a timeline. Ideally that fits on 1–2 pages.
+Supporting detail goes on optional appendix pages the user can switch on or off.
+
+**Core report (always included)**
 
 | # | Section | Contents |
 |---|---|---|
-| 1 | Cover / summary | Project name, utility, permit/job #, address, dates and hours of work, duration, contact, one-paragraph summary ("Right lane of Main St closed for 300 ft between 4th and 5th Ave for pole replacement; two-way traffic kept using flaggers") |
-| 2 | Location map | Small-scale OSM map with the work zone highlighted, nearby cross streets labeled |
-| 3 | TCP overview map | Whole layout on the OSM basemap: advance warning signs, tapers, buffer, work area, trucks, termination, north arrow, scale bar, legend |
-| 4 | Detail maps | One zoomed figure per approach direction / side street, with dimension callouts (taper length, sign spacing, buffer, work area length) |
-| 5 | Sign sequence | Strip diagram of each approach showing sign faces (MUTCD codes and icons) in order with distances |
-| 6 | Narrative | Generated, plain-language explanation: why this typical application was chosen, how traffic moves through the zone, pedestrian/bike accommodation, flagger and police positions, reduced-speed zone, emergency vehicle access |
-| 7 | Compliance table | Each key value (taper, spacing, buffer, sign distances) with required minimum, value provided, and citation (MUTCD section / state / county rule) |
-| 8 | Device quantities | Signs by code, cones/drums, barricades, arrow boards, PCMS, flaggers, officers |
-| 9 | Notes | General notes from the rules plus project-specific notes |
-| 10 | Approval block | Preparer, reviewer, certification #, signature/stamp area, and a county approval box |
+| 1 | Header | Utility name/logo, project name, job/permit #, address, road owner (ADOT / county / city), prepared by, date, revision |
+| 2 | **TCP map** (main figure) | Layout on the OSM street map, **highlighting the main elements** with clear colors and labels: work area (≥ 250 ft) and trucks, lane(s) closed, tapers, cones/barricades, advance warning signs, flagger and police positions, reduced-speed zone start/end. Includes cross-street names, north arrow, scale bar, compact legend, and key dimensions |
+| 3 | **Brief explanation** | 1–2 generated paragraphs in plain language, e.g.: "Pacific Ave will have the northbound right lane closed for 300 ft between 4th St and 5th St to replace two utility poles. Traffic will merge left using a 245 ft cone taper. Two flaggers will control traffic, and a 35 mph reduced-speed zone will be posted. Sidewalk on the east side will remain open." |
+| 4 | **Timeline** | Start/end dates, daily work hours, days of week, and a simple bar chart of the phases (see below). Flags any conflict with the agency's lane-closure hours |
+| 5 | Contacts | Field supervisor, 24-hour emergency contact, preparer |
+
+**Optional appendix pages (toggle per report)**
+- Location/vicinity map (zoomed out).
+- Detail maps per approach with dimension callouts.
+- Sign sequence strip diagram (sign faces in order, with distances).
+- Compliance table: required minimum vs. provided, with the source rule for each value.
+- Device quantities (signs by code, cones/drums, barricades, arrow boards, PCMS, flaggers, officers).
+- General notes from the rules plus project notes.
+- Approval/signature block, and a county approval box.
+
+**Timeline details**
+
+The timeline comes from the project details form (§3.2.1), or from the schedule if a scheduler set one.
+
+- Phases, default set: **mobilize & set up traffic control → work → remove traffic control & demobilize**.
+  Users can add phases (e.g., "Day 1: set poles", "Day 2: transfer conductors") or a per-day breakdown.
+- Each phase has dates, daily hours, which traffic control layout is active, and the flagger/police needs.
+- Checks: lane closures outside allowed hours, weekend or holiday work, night work needing lighting.
+- Shown as a simple bar chart in the report and an editable timeline in the app.
+- Different layouts per phase are supported (e.g., shoulder closure on day 1, lane closure on day 2).
 
 **How it's built**
 - Map figures are rendered server-side from the same plan data the editor uses (MapLibre in a
@@ -289,6 +378,34 @@ diagrams) and **explains** it (plain-language narrative).
 - Status tracking per plan: `draft → in review → sent to county → approved / revisions requested`.
 
 **Other exports:** JSON (round-trip), GeoJSON/KML, and DXF later for CAD users.
+
+### 3.10 Users, roles, and workflow
+
+One organization (the utility) with outside consultants invited per project.
+
+| Role | Main tasks | Key permissions |
+|---|---|---|
+| **Designer** | Upload drawings, confirm work items, fill in project details, generate and edit the TCP | Create/edit projects and plans |
+| **Engineer** | Review drafts, fix issues, approve/sign, maintain utility rule files | Edit, approve, manage rules |
+| **Scheduler** | Set dates, hours, phases; coordinate flaggers/police; see the calendar across projects | Edit timeline; view plans |
+| **Inspector** | Check the setup in the field against the plan; record photos, notes, and deviations | View plans (mobile); add field reports |
+| **Construction consultant** (external) | Prepare or adjust TCPs for assigned projects | Edit/comment only on projects they're invited to |
+| **Admin** | Users, roles, organization settings, jurisdiction contacts | Everything |
+
+Plan status flow:
+`draft → engineer review → approved internally → sent to agency → agency approved / revisions requested → active in field → closed`.
+Every change is logged (who, what, when) for accountability.
+
+**Scheduler view:** a calendar and list of upcoming work across all projects, with filters for
+county/city, status, and flagger/police needs. It highlights conflicts such as two closures
+on the same road on the same day, or work outside allowed hours.
+
+**Inspector field mode (mobile-friendly):**
+- Open the plan on a phone or tablet at the site, with GPS location shown on the map.
+- A checklist generated from the plan (signs in place and spaced correctly, taper length, cones,
+  flaggers, police present).
+- Attach photos and notes. Mark deviations and send them back to the designer.
+- Field reports are stored with the project and can be added to the record.
 
 **Map data and tiles:** use OpenStreetMap data, but not the public `tile.openstreetmap.org` servers
 for production (their usage policy forbids heavy use). Use a hosted OSM tile provider (e.g.,
@@ -343,6 +460,20 @@ Rules for the LLM:
 | Report export | HTML/CSS templates (Jinja2) → PDF via Playwright; map figures rendered headless | Emailable, styled reports with maps; easy per-county templates |
 | Testing | pytest (golden-file tests per sample plan), Vitest, Playwright E2E | Regressions in geometry are subtle |
 
+### 5.1 Hosting and security
+
+- **Hosted web app** in a major cloud (Azure or AWS; pick whichever the utility already uses).
+  Containerized backend and worker, managed PostgreSQL/PostGIS, object storage for PDFs and reports.
+- **Single sign-on** with the utility's identity provider (e.g., Microsoft Entra ID via OIDC/SAML)
+  for staff. Invited guest accounts or the consultant's own SSO for outside consultants.
+- **Role-based access control** per §3.10, scoped per project for external users.
+- Utility drawings show grid infrastructure, which is **sensitive**. Encrypt in transit and at rest,
+  keep an audit log, limit external access to assigned projects, and set data retention rules.
+  Don't send drawings to an LLM provider without approval from the utility's security team
+  (§4 can stay disabled).
+- Mobile-friendly UI for inspectors (responsive web first; offline support later if field coverage is poor).
+- Environments: dev, staging, production. Daily backups.
+
 Proposed repo layout:
 
 ```
@@ -359,6 +490,9 @@ tcp-auto/
       assistant/     # PlanAssistant interface, NullAssistant, providers
       report/        # narrative templates, map figure rendering, PDF report, email package
       export/        # GeoJSON/KML/JSON
+      schedule/      # phases, timeline, work-hour checks, scheduler calendar
+      field/         # inspector checklists, photos, deviations
+      auth/          # SSO, roles, project-level permissions
       api/           # FastAPI routes
     tests/
   frontend/          # React editor
@@ -368,7 +502,11 @@ tcp-auto/
 ```
 
 ### Core data model (simplified)
+- `Project { details (§3.2.1, each field with source), road_owner, jurisdiction_chain, members[] }`
 - `Project` → `PlanDocument` (PDF, pages) → `WorkItem[]`
+- `Phase { name, start, end, daily_hours, days, tcp_plan_id, flaggers, police }`
+- `FieldReport { inspector, timestamp, gps, checklist_results, photos[], deviations[] }`
+- `User { roles[] }`, `ProjectMember { user, role }`
 - `WorkZone { centerline_ref, start_station, end_station, side, lanes_affected, length_ft ≥ 250 }`
 - `RoadContext { speed_mph, lanes, class, divided, one_way, urban, sources{} }`
 - `ResolvedRules { values{}, citations{}, jurisdiction_chain[] }`
@@ -384,17 +522,19 @@ tcp-auto/
 | **0. Foundation** | Repo scaffolding, CI, data models, sample plan collection | 5–10 real (sanitized) plans with hand-made reference TCPs |
 | **1. Ingestion MVP** | Vector PDF → PageModel, scale detection, keyword-based install/remove extraction, utility profile YAML | ≥ 90% of work items found on sample vector plans |
 | **2. Location + site** | Address geocoding + manual pin, OSM road lookup, centerpoint/extent, 250 ft minimum | Centerpoint within ~25 ft of the reference on samples |
-| **3. Rules engine** | Federal baseline + 1 pilot state + 1 pilot county, citations, police/flagger/speed rules | Unit tests reproduce MUTCD tables and formulas |
+| **3. Rules engine** | Federal baseline + Arizona + Maricopa/Pinal county roads, road-owner detection, citations, police/flagger/speed/hours rules | Unit tests reproduce MUTCD tables and formulas; road owner correct on sample locations |
 | **4. Layout generator** | 4–5 typical applications (shoulder, 2-lane flagger, multilane lane closure, intersection) | Generated drafts pass compliance checks and match reference layouts |
 | **5. Editor** | Map editor, palette, snapping, live compliance, versions | Consultant can fix a draft in < 15 min |
-| **6. TCP report** | Emailable PDF report: OSM map figures, sign sequence, narrative, compliance table, quantities; email draft + KML | Accepted by pilot county as an approval submittal |
+| **6. TCP report + timeline** | Emailable PDF: highlighted TCP map, brief explanation, timeline; optional appendices; email draft + KML | Accepted by Maricopa/Pinal reviewers as an approval submittal |
+| **6b. Roles & scheduling** | SSO, roles, consultant invites, status workflow, scheduler calendar, inspector field mode | Each role can complete its main task end to end |
 | **7. LLM integration** | Real provider behind `PlanAssistant` for notes, ambiguous symbols, centerpoint, review | Measurable lift over heuristics on samples, with human confirmation |
 | **8. Scale-out** | More jurisdictions, raster/OCR improvements, multi-zone/detours, DXF | Driven by customer demand |
 
-**Suggested first build slice (vertical):** one vector PDF → address/manual pin → OSM speed/lanes →
-federal rules → TA-10 (two-lane, flagger) layout → shown read-only on an OSM map → **basic PDF
-report** (overview map + narrative + quantities). This gives an emailable result early; editing
-comes next.
+**Suggested first build slice (vertical):** one vector PDF → project details form (user fills the
+gaps) → address/manual pin → OSM speed/lanes → federal + Arizona rules → TA-10 (two-lane, flagger)
+layout → shown read-only on an OSM map → **basic PDF report** (highlighted map + brief explanation +
+timeline). Use a location on an unincorporated Maricopa or Pinal county road. This gives an
+emailable result early; editing, roles, and scheduling come next.
 
 ---
 
@@ -411,15 +551,30 @@ comes next.
 
 ---
 
-## 8. Open questions for you
+## 8. Decisions and open questions
 
-1. **Pilot jurisdiction(s):** which state(s) and county/city should we encode first?
-2. **Sample plans:** can you provide a few real PDFs (sanitized) and, ideally, the TCPs that were actually approved for them?
-3. **Symbology:** do the plans come from one utility/engineering firm (one legend) or many?
-4. **Submittal format:** does the county require a specific report layout, page size, or form?
-   Do they accept a PDF by email, or use a permit portal? A sample of a previously approved TCP
-   submittal would be ideal for building the report template.
-5. **Who uses it:** internal engineers only, or outside consultants too (auth, multi-tenant, roles)?
-6. **Deployment:** hosted web app, on-prem, or desktop?
-7. **Work types beyond lane closures:** intersections, sidewalk closures, night work, road closures with detours?
-8. **Police details:** are you aware of specific thresholds in your target areas, and should the app produce the police request paperwork?
+**Decided**
+
+| Topic | Decision |
+|---|---|
+| Pilot jurisdictions | Arizona: Maricopa and Pinal counties |
+| Organization | Electrical utility, with outside construction consultants |
+| Users | Designers, engineers, inspectors, schedulers, construction consultants |
+| Report format | No required format; highlighted map + brief explanation + timeline |
+| Missing drawing info | Entered by the user in the project details form |
+| Deployment | Hosted web app |
+
+**Still open**
+
+1. **Sample plans:** can you share a few real design PDFs (sanitized)? Approved TCPs for the same jobs would help too.
+2. **Symbology:** are drawings made in-house with one standard legend, or by several design firms?
+3. **Where the utility works most:** which cities in Maricopa/Pinal (and how often on ADOT routes)?
+   This sets the order for adding city rules.
+4. **Police officers:** do you already know when agencies require off-duty officers? Should the app
+   help with the officer request or scheduling?
+5. **Cloud and sign-in:** does the utility use Microsoft 365/Entra ID (for single sign-on) and prefer Azure or AWS?
+6. **LLM use:** will the utility's security team allow sending drawing excerpts to an LLM provider,
+   or should the assistant stay disabled or self-hosted?
+7. **Other work types:** intersections, sidewalk closures, night work, or full road closures with detours?
+8. **Existing systems:** should projects link to a work-order or scheduling system (e.g., job numbers
+   imported automatically)?

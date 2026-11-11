@@ -9,8 +9,8 @@ layout follows the federal MUTCD baseline plus state and county/city rules, with
 work area of 250 ft. Engineers then refine the draft in a drag-and-drop editor.
 
 The TCP is a standalone deliverable, not drawn onto the design plans. It is generated on an
-OpenStreetMap street map and exported as an emailable PDF report: map figures, sign sequences,
-a plain-language narrative, a compliance table, and device quantities, ready to send to a
+OpenStreetMap street map and exported as an emailable PDF report: a map highlighting the plan,
+a brief plain-language explanation, and a timeline (with optional detail pages), ready to send to a
 county or city for approval.
 
 An LLM assistant is planned as an **optional, pluggable** helper (placeholder in v1) for
@@ -25,3 +25,6 @@ editor, LLM interface, roadmap, and open questions.
 ## Status
 
 Planning phase. No code yet.
+
+Pilot area: Arizona (Maricopa and Pinal counties). Users: designers, engineers, inspectors,
+schedulers, and construction consultants at an electrical utility. Hosted web app.
