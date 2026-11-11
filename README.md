@@ -58,6 +58,8 @@ A static demo with three sample projects runs on any phone or computer with no s
 
 **Build locally:** `python packaging/build_demo.py site/`, then `python -m http.server -d site 8000`. The output is plain static files, so any static host works (Netlify, S3, an internal web server).
 
+**Embedded viewers:** `python packaging/build_demo.py site/ --embed` builds a variant for hosts that wrap the page and block pop-ups and downloads, such as a Claude artifact. The report and checklist open inside the page, and downloads point to the full demo.
+
 ## Desktop app (Windows / Linux)
 
 FlagPole can be packaged as a desktop app with PyInstaller. Double-click it and it starts on your

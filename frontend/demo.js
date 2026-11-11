@@ -16,6 +16,11 @@
     const m = path.match(/^\/api\/projects\/([a-f0-9]+)\/(report\.html|report\.pdf|checklist\.html|checklist\.pdf|email\.eml|drawing\/page\/(\d+)\.png)/);
     if (!m) return path;
     const pid = m[1], what = m[2];
+    if (window.FP_EMBED && /\.(pdf|eml)$/.test(what)) {
+      // Embedded previews (e.g. a Claude artifact) block downloads.
+      setTimeout(() => window.status && status("Downloads aren't available in this preview. Use the GitHub Pages demo or the full app to download PDFs."));
+      return "#";
+    }
     const files = (DATA && DATA.files[pid]) || {};
     if (what.startsWith("drawing")) return BASE + (files["page" + m[3]] || "");
     const key = what.replace(".", "_");
@@ -174,6 +179,31 @@
   function recheck(p) {
     const keep = p.plan.issues.filter(i => i.severity === "info" || i.message.includes("Phase") || (i.message.toLowerCase().includes("speed") && i.message.includes("confirmed")) || i.message.includes("Intersection") || i.message.includes("one-way"));
     p.plan.issues = keep.concat(check(p.plan, p.road));
+  }
+
+  // ---------------------------------------------------------------- in-page viewer (when pop-ups are blocked)
+  const realOpen = window.open ? window.open.bind(window) : null;
+  window.open = function (url, target, features) {
+    const isDemoDoc = typeof url === "string" && /demo\/[a-f0-9]+\/(report|checklist)\.html$/.test(url);
+    let w = null;
+    if (!(isDemoDoc && window.FP_EMBED) && realOpen) { try { w = realOpen(url, target, features); } catch (_) { w = null; } }
+    if (w || !isDemoDoc) return w;
+    showDoc(url);
+    return null;
+  };
+  async function showDoc(url) {
+    const html = await realFetch(url).then(r => r.text());
+    let ov = document.getElementById("demoDoc");
+    if (!ov) {
+      ov = document.createElement("div");
+      ov.id = "demoDoc";
+      ov.className = "demo-doc";
+      ov.innerHTML = '<div class="demo-doc-bar"><b></b><button type="button">Close</button></div><iframe title="Document preview"></iframe>';
+      ov.querySelector("button").onclick = () => ov.remove();
+      document.body.appendChild(ov);
+    }
+    ov.querySelector("b").textContent = /checklist/.test(url) ? "Crew checklist" : "Agency report";
+    ov.querySelector("iframe").srcdoc = html;
   }
 
   // ---------------------------------------------------------------- banner

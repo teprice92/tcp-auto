@@ -1,6 +1,7 @@
 """Build the static FlagPole online demo (GitHub Pages or any static host).
 
-    python packaging/build_demo.py site/
+    python packaging/build_demo.py site/            # GitHub Pages / any static host
+    python packaging/build_demo.py site/ --embed    # for embedded viewers (e.g. a Claude artifact)
 
 Runs the real backend in-process to create sample projects, then saves everything the editor needs
 (API responses, report/checklist HTML and PDFs, email draft, drawing image) as static files.
@@ -52,7 +53,7 @@ SAMPLES = [
 ]
 
 
-def main(out: Path) -> None:
+def main(out: Path, embed: bool = False) -> None:
     tmp = Path(tempfile.mkdtemp(prefix="flagpole-demo-"))
     os.environ["TCP_DATA_DIR"] = str(tmp)
     from fastapi.testclient import TestClient
@@ -118,7 +119,14 @@ def main(out: Path) -> None:
     html = (out / "index.html").read_text(encoding="utf-8")
     html = html.replace("/static/", "")
     html = html.replace('<script src="vendor/leaflet/leaflet.js"></script>', '<script src="vendor/leaflet/leaflet.js"></script>\n<script src="demo.js"></script>')
-    html = html.replace("<title>FlagPole – Traffic control plans</title>", "<title>FlagPole demo – Traffic control plans</title>")
+    html = html.replace("<title>FlagPole – Traffic control plans</title>", "<title>FlagPole Demo</title>")
+    html = html.replace('<a class="brand" href="/"', '<a class="brand" href="#"' if embed else '<a class="brand" href="./"')
+    if embed:
+        # Embedded viewers wrap the page in their own document shell and block pop-ups/downloads.
+        html = html.replace('<script src="demo.js"></script>', '<script>window.FP_EMBED = true;</script>\n<script src="demo.js"></script>')
+        for tag in ("<!doctype html>", '<html lang="en">', "<head>", "</head>", "<body>", "</body>", "</html>",
+                    '<meta charset="utf-8">', '<meta name="viewport" content="width=device-width, initial-scale=1">'):
+            html = html.replace(tag + "\n", "").replace(tag, "")
     (out / "index.html").write_text(html, encoding="utf-8")
     css = (out / "style.css").read_text(encoding="utf-8")
     css += """
@@ -126,6 +134,10 @@ def main(out: Path) -> None:
 .demo-banner { display: flex; align-items: center; gap: 10px; justify-content: center; background: #ff7a1a; color: #fff; font-size: 13px; padding: 6px 12px; }
 .demo-banner button { min-height: 24px; padding: 0 8px; background: #ffffff33; color: #fff; border-color: #ffffff66; flex: none; }
 @media (max-width: 820px) { .demo-banner .long { display: none; } .demo-banner { font-size: 12px; padding: 4px 10px; } }
+.demo-doc { position: fixed; inset: 0; z-index: 3000; background: var(--bg); display: flex; flex-direction: column; }
+.demo-doc-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px; background: var(--blue-900); color: #fff; }
+.demo-doc-bar button { background: #ffffff1f; color: #fff; border-color: #ffffff40; }
+.demo-doc iframe { flex: 1; width: 100%; border: 0; background: #fff; }
 """
     (out / "style.css").write_text(css, encoding="utf-8")
     for junk in out.rglob("__pycache__"):
@@ -137,4 +149,5 @@ def main(out: Path) -> None:
 
 
 if __name__ == "__main__":
-    main(Path(sys.argv[1] if len(sys.argv) > 1 else "site").resolve())
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    main(Path(args[0] if args else "site").resolve(), embed="--embed" in sys.argv)
