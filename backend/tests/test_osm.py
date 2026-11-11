@@ -33,3 +33,52 @@ def test_stitches_split_street():
     lons = [p.lon for p in road.centerline]
     assert lons[0] == -111.918 and lons[-1] == -111.909 and len(lons) == 4
     assert [i.cross_street for i in road.intersections] == ["S Rural Rd"]
+
+
+def test_pairs_divided_road_carriageways():
+    """A divided road mapped as two one-way ways (plus a two-way stretch before the split) becomes one
+    road with a median profile, both directions' lanes and one intersection per cross street."""
+    from tcp_auto.geo import Centerline
+    from tcp_auto.models import LatLon
+
+    lat, d = 33.3644, 0.00008  # carriageways ~29 ft either side of the middle -> ~58 ft apart
+    g = lambda la, lo: {"lat": la, "lon": lo}
+    name = {"highway": "secondary", "name": "E Guadalupe Rd"}
+    data = {"elements": [
+        {"type": "way", "id": 10, "nodes": [1, 2], "tags": {**name, "lanes": "4"}, "geometry": [g(lat, -111.800), g(lat, -111.796)]},
+        {"type": "way", "id": 11, "nodes": [2, 3, 32, 4], "tags": {**name, "oneway": "yes", "lanes": "2"},
+         "geometry": [g(lat, -111.796), g(lat - d, -111.795), g(lat - d, -111.790), g(lat - d, -111.788)]},
+        {"type": "way", "id": 12, "nodes": [5, 31, 6, 2], "tags": {**name, "oneway": "yes", "lanes": "2"},
+         "geometry": [g(lat + d, -111.788), g(lat + d, -111.790), g(lat + d, -111.795), g(lat, -111.796)]},
+        {"type": "way", "id": 20, "nodes": [30, 31, 32, 33], "tags": {"highway": "primary", "name": "N Gilbert Rd"},
+         "geometry": [g(lat + 0.002, -111.790), g(lat + d, -111.790), g(lat - d, -111.790), g(lat - 0.002, -111.790)]},
+        {"type": "node", "id": 31, "lat": lat + d, "lon": -111.790, "tags": {"highway": "traffic_signals"}},
+        {"type": "node", "id": 32, "lat": lat - d, "lon": -111.790, "tags": {"highway": "traffic_signals"}},
+    ]}
+    road, extra = parse_overpass(data, lat - d, -111.792)  # a point on the eastbound carriageway
+    assert extra["osm_way_id"] == 11 and extra["osm_partner_way_id"] == 12
+    assert not road.one_way and road.divided and (road.lanes_forward, road.lanes_backward) == (2, 2)
+    assert road.centerline[0].lon == -111.800  # continues onto the undivided stretch
+    assert abs(road.centerline[-1].lat - lat) < 1e-5  # midway between the carriageways
+    widths = {round(m.station_ft): m.width_ft for m in road.median}
+    assert road.median[0].width_ft == 0  # undivided before the split
+    assert 30 < max(widths.values()) < 38  # ~58 ft apart minus 2 lanes x 12 ft per side / 2
+    assert [(i.cross_street, i.signalized) for i in road.intersections] == [("N Gilbert Rd", True)]
+    # the eastbound carriageway is the right-hand roadway: its middle is 12 ft (one lane) right of the median edge
+    cl = Centerline.for_road(road)
+    s, off = cl.project(LatLon(lat=lat - d, lon=-111.792))
+    assert abs(off - 12) < 2, off
+    # and a plan built on it keeps the closure on the eastbound carriageway
+    from datetime import date, time
+
+    from tcp_auto.models import Phase, Project, ProjectDetails
+    from tcp_auto.pipeline import build_plan
+
+    road.speed_confirmed = True
+    p = Project(details=ProjectDetails(city="Gilbert", work_position="lane", phases=[Phase(name="W", start_date=date(2026, 12, 1), end_date=date(2026, 12, 1),
+                                                                                       start_time=time(9), end_time=time(15))]),
+                road=road, work_center=LatLon(lat=lat - d, lon=-111.7915))
+    plan, _, _ = build_plan(p)
+    assert plan.template == "lane_closure_multilane"
+    work = [z for z in plan.zones if z.kind == "work_area"][0]
+    assert all(pt.lat < lat - d / 3 for pt in work.polygon), "work area should sit on the south (eastbound) roadway"

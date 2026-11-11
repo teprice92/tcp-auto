@@ -175,6 +175,8 @@ async function finishCenterline() {
   const road = p.road ? { ...p.road } : defaultRoad();
   road.centerline = state.draftLine;
   road.intersections = []; // stations change with a new line
+  road.median = []; // a hand-drawn line follows one roadway; the median profile no longer applies
+  road.divided = false;
   road.sources = { ...(road.sources || {}), centerline: "user" };
   layers.draft.clearLayers();
   setMode(null);
@@ -420,7 +422,9 @@ function fillRoad() {
     ul.appendChild(li);
   });
   const src = r.sources || {};
-  $("#roadSources").textContent = Object.keys(src).length ? "Sources: " + Object.entries(src).map(([k, v]) => `${k}: ${v}`).join(", ") : "";
+  const med = Math.max(0, ...(r.median || []).map(m => m.width_ft));
+  $("#roadSources").textContent = (med > 0 ? `Divided road: median up to ${Math.round(med)} ft (the plan follows each side's carriageway). ` : "")
+    + (Object.keys(src).length ? "Sources: " + Object.entries(src).map(([k, v]) => `${k}: ${v}`).join(", ") : "");
 }
 function readRoad() {
   const r = structuredClone(state.project.road || defaultRoad()), f = $("#roadForm");
