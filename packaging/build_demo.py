@@ -50,6 +50,8 @@ def road(key: str, **attrs) -> dict:
     half_lanes = (attrs.get("lanes_forward", 1) + attrs.get("lanes_backward", 1)) * lane_w / 2
     median = [{"station_ft": m["station_ft"], "width_ft": round(max(0.0, m["separation_ft"] - half_lanes), 1) if m["separation_ft"] else 0.0}
               for m in r.get("carriageway_separation", [])]
+    if attrs.get("center_turn_lane"):
+        median = []  # center-turn-lane road; the short raised-median sections at the far ends are outside the plan
     return {"name": r["name"], "centerline": r["centerline"], "intersections": ints, "speed_confirmed": True,
             "median": median, "divided": any(m["width_ft"] > 0 for m in median), "sources": {"centerline": "osm"}, **attrs}
 
@@ -62,6 +64,19 @@ def along(key: str, cross_street: str, meters: float) -> dict:
     lon = at["lon"] + meters / (111_320 * math.cos(math.radians(at["lat"])))
     f = (lon - a["lon"]) / (b["lon"] - a["lon"])
     return {"lat": a["lat"] + f * (b["lat"] - a["lat"]), "lon": lon}
+
+
+def school(key: str, name: str, at: dict) -> dict:
+    """Nearest school for the project details (as the map lookup would record it)."""
+    from tcp_auto.geo import haversine_ft
+    from tcp_auto.models import LatLon
+
+    s = next(x for x in ROADS[key]["schools"] if x["name"] == name)
+    return {"name": name, "distance_ft": round(haversine_ft(LatLon(lat=s["lat"], lon=s["lon"]), LatLon(**at))), "lat": s["lat"], "lon": s["lon"]}
+
+
+def school_day(start, end):
+    return [{"name": "Work (school day)", "start_date": start, "end_date": end, "start_time": "08:30", "end_time": "14:30"}]
 
 
 SAMPLES = [
@@ -79,6 +94,27 @@ SAMPLES = [
                   "work_position": "lane", "phases": phases("2026-12-08", "2026-12-08", "20:00", "23:30"), "contacts": CONTACTS, "job_number": "WO-DEMO-3"},
          road=lambda: road("park_ave_gilbert", speed_mph=25, lanes_forward=1, lanes_backward=1, road_class="local", has_sidewalk=True),
          center=lambda: along("park_ave_gilbert", "N Palm St", 195)),
+    dict(name="Demo 4 – School zone, 3-lane street with center turn lane (Gilbert)", drawing=False,
+         details=lambda: {"city": "Gilbert", "address": "Mesquite Elementary School frontage, west of S 31st St", "description": "replace a damaged streetlight pole and its foundation",
+                          "work_position": "lane", "side": "left", "school_zone": True, "school_checked": True, "pedestrian_detour": True,
+                          "nearby_school": school("mesquite_st_gilbert", "Mesquite Elementary School", along("mesquite_st_gilbert", "S 29th Pl", 150)),
+                          "phases": school_day("2026-12-09", "2026-12-10"), "contacts": CONTACTS, "job_number": "WO-DEMO-4"},
+         road=lambda: road("mesquite_st_gilbert", speed_mph=25, lanes_forward=1, lanes_backward=1, center_turn_lane=True, road_class="collector", has_sidewalk=True),
+         center=lambda: along("mesquite_st_gilbert", "S 29th Pl", 150)),
+    dict(name="Demo 5 – 5-lane road with center turn lane, by a high school (Gilbert)", drawing=False,
+         details=lambda: {"city": "Gilbert", "address": "E Elliot Rd just east of N Gilbert Tiger Dr", "description": "trench and install conduit for a new service",
+                          "work_position": "lane", "side": "left", "school_checked": True,
+                          "nearby_school": school("elliot_rd_gilbert", "Gilbert High School", along("elliot_rd_gilbert", "N Gilbert Tiger Dr", 60)),
+                          "phases": phases("2026-12-14", "2026-12-16"), "contacts": CONTACTS, "permit_number": "TRF-DEMO-005", "job_number": "WO-DEMO-5"},
+         road=lambda: road("elliot_rd_gilbert", speed_mph=45, lanes_forward=2, lanes_backward=2, center_turn_lane=True, road_class="arterial"),
+         center=lambda: along("elliot_rd_gilbert", "N Gilbert Tiger Dr", 60)),
+    dict(name="Demo 6 – 7-lane arterial, 3 + center turn lane + 3 (Mesa)", drawing=False,
+         details=lambda: {"city": "Mesa", "address": "E Southern Ave east of S Harris Dr", "description": "replace a pad-mount switch cabinet",
+                          "work_position": "lane", "side": "right", "school_checked": True,
+                          "nearby_school": school("southern_ave_mesa", "Mesa High School", along("southern_ave_mesa", "S Harris Dr", 250)),
+                          "phases": phases("2027-01-05", "2027-01-06"), "contacts": CONTACTS, "permit_number": "ROW-DEMO-006", "job_number": "WO-DEMO-6"},
+         road=lambda: road("southern_ave_mesa", speed_mph=40, lanes_forward=3, lanes_backward=3, center_turn_lane=True, road_class="arterial"),
+         center=lambda: along("southern_ave_mesa", "S Harris Dr", 250)),
 ]
 
 
@@ -98,6 +134,8 @@ def main(out: Path, embed: bool = False) -> None:
     data = {"projects": {}, "originals": {}, "files": {}, "checklists": {}, "rules_preview": {}, "rules_layer": {}}
     pdf_ok = True
     for s in SAMPLES:
+        if callable(s["details"]):
+            s["details"] = s["details"]()
         p = c.post("/api/projects", json={"project_name": s["name"], **s["details"]}).json()
         pid = p["id"]
         if s["drawing"]:

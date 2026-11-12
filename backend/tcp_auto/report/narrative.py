@@ -58,12 +58,15 @@ def explain(project: Project, plan: TcpPlan) -> list[str]:
     utility = det.utility_name or "The utility"
 
     paras = []
+    # the side as the affected driver sees it: on a two-way road the work is always in that
+    # direction's curb (right) lane or shoulder; on a one-way street it is the side chosen
+    drv = det.side if road.one_way else "right"
     if plan.template == "shoulder":
-        closure = f"the {bound} {det.side} shoulder/parking area of {where} will be closed for {dims.work_area_ft:.0f} ft"
+        closure = f"the {bound} {drv} shoulder/parking area of {where} will be closed for {dims.work_area_ft:.0f} ft"
         flow = f"All travel lanes stay open. Cones guide traffic past the work area with a {dims.taper_ft:.0f} ft shoulder taper."
     elif plan.template == "lane_closure_multilane":
-        closure = f"the {bound} {det.side} lane of {where} will be closed for {dims.work_area_ft:.0f} ft"
-        other = "left" if det.side == "right" else "right"
+        closure = f"the {bound} {drv} lane of {where} will be closed for {dims.work_area_ft:.0f} ft"
+        other = "left" if drv == "right" else "right"
         flow = (
             f"{bound.capitalize()} traffic will merge {other} using a {dims.taper_ft:.0f} ft taper, followed by a "
             f"{dims.buffer_ft:.0f} ft buffer space before the work area. Other lanes stay open."

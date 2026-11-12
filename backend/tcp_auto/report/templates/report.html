@@ -28,7 +28,7 @@
   .map { border: 1px solid var(--line); }
   .map svg { display:block; width:100%; height:auto; max-height:3.4in; }
   .tl svg { display:block; width:100%; height:auto; max-height:1.1in; }
-  .grid { display: grid; grid-template-columns: 1.25fr 1fr; gap: 14px; margin-top: 4px; }
+  .grid { display: grid; grid-template-columns: 1.3fr 1fr 1fr; gap: 12px; margin-top: 4px; }
   .page1 h2 { margin-top: 4px; }
   h2 { font-size: 12.5px; margin: 8px 0 4px; color: var(--blue); border-bottom: 2px solid var(--blue-100); padding-bottom: 2px; text-transform: uppercase; letter-spacing: .04em; }
   p { margin: 0 0 6px; }
@@ -63,6 +63,8 @@
       <tr><td>Location</td><td colspan="3">{{ d.address or road.name }}</td></tr>
       <tr><td>Road owner</td><td>{{ owner_label }}</td><td>Template</td><td>{{ template_label }}</td></tr>
       <tr><td>Prepared by</td><td>{{ d.contacts.preparer or "—" }}</td><td>Date</td><td>{{ today }}</td></tr>
+      <tr><td>Field supervisor</td><td>{{ d.contacts.field_supervisor or "—" }} {{ d.contacts.field_supervisor_phone }}</td><td>24-hr emergency</td><td>{{ d.contacts.emergency_contact or "—" }} {{ d.contacts.emergency_phone }}</td></tr>
+      <tr><td>Traffic control</td><td colspan="3">{{ d.contacts.traffic_control_company or "—" }}</td></tr>
     </table>
   </header>
 
@@ -86,6 +88,8 @@
     <div>
       <h2>What is happening</h2>
       {% for para in explanation %}<p>{{ para }}</p>{% endfor %}
+    </div>
+    <div>
       <h2>Site conditions</h2>
       <table class="t site">
         {% for k, v in site %}<tr><td>{{ k }}</td><td>{{ v }}</td></tr>{% endfor %}
@@ -107,14 +111,9 @@
       {% else %}
         <p class="muted">No timeline entered.</p>
       {% endif %}
-      <h2>Contacts</h2>
-      <table class="t">
-        <tr><td>Field supervisor</td><td>{{ d.contacts.field_supervisor or "—" }} {{ d.contacts.field_supervisor_phone }}</td></tr>
-        <tr><td>24-hour emergency</td><td>{{ d.contacts.emergency_contact or "—" }} {{ d.contacts.emergency_phone }}</td></tr>
-        <tr><td>Traffic control company</td><td>{{ d.contacts.traffic_control_company or "—" }}</td></tr>
-      </table>
     </div>
   </div>
+
 </section>
 
 <section class="page">

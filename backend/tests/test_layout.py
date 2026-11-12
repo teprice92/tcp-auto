@@ -184,3 +184,20 @@ def test_three_plus_one_plus_three(make_project):
     x1, y1 = cl.point_xy(plan.dimensions.work_start_station_ft, 36)
     assert abs(((x1 - x0) ** 2 + (y1 - y0) ** 2) ** 0.5 - 42) < 0.5  # 6 ft half center lane + 3 x 12 ft
     assert not [i for i in plan.issues if i.severity == "error"], plan.issues
+
+
+def test_far_side_closure_is_drivers_right_lane(make_project):
+    """Work on the opposing side of a two-way road closes that direction's curb lane: the driver's RIGHT lane."""
+    from tcp_auto.report.narrative import explain
+
+    p = make_project(side="left")
+    plan, _, _ = build_plan(p)
+    codes = [d.code for d in plan.devices if d.group == "advance_warning"]
+    assert codes == ["W4-2R", "W20-5R", "W20-1"]
+    assert "westbound right lane" in explain(p, plan)[0] and "merge left" in explain(p, plan)[0]
+    p = make_project(side="left", road_kw=dict(lanes_forward=1, lanes_backward=1, center_turn_lane=True, speed_mph=30))
+    plan, _, _ = build_plan(p)
+    assert [d.code for d in plan.devices if d.group == "advance_warning"][:2] == ["W1-4L", "W20-5R"]
+    p = make_project(side="left", road_kw=dict(one_way=True, lanes_forward=3, lanes_backward=0))
+    plan, _, _ = build_plan(p)
+    assert [d.code for d in plan.devices if d.group == "advance_warning"][:2] == ["W4-2L", "W20-5L"]  # one-way: really the left lane

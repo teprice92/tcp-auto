@@ -15,7 +15,11 @@ def test_static_demo_build(tmp_path, monkeypatch):
     html = (out / "index.html").read_text()
     assert '<script src="demo.js"></script>' in html and "/static/" not in html  # relative paths for any sub-path
     data = json.loads((out / "demo" / "data.json").read_text())
-    assert len(data["projects"]) == 3 and len(data["rules_layers"]) >= 10
+    assert len(data["projects"]) == 6 and len(data["rules_layers"]) >= 10
+    templates = {p["plan"]["template"] for p in data["projects"].values()}
+    assert {"lane_closure_multilane", "two_lane_flagger", "lane_shift_twltl"} <= templates
+    assert sum(p["road"]["center_turn_lane"] for p in data["projects"].values()) == 3
+    assert any(p["details"]["school_zone"] for p in data["projects"].values())
     for pid, files in data["files"].items():
         assert (out / files["report_html"]).exists() and (out / files["checklist_html"]).exists()
     assert "city|Gilbert|" in data["rules_preview"]

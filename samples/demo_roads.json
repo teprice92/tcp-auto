@@ -1,5 +1,5 @@
 {
- "_about": "Road centerlines for the online demo, measured from OpenStreetMap map tiles (packaging/osm_tiles.py) because the OSM data API wasn't reachable from the build machine. Map data (c) OpenStreetMap contributors, ODbL. carriageway_separation: distance between the centers of a divided road's two carriageways (0 = undivided), measured the same way; the demo build turns it into a median width for each scenario's lane layout.",
+ "_about": "Road centerlines for the online demo, measured from OpenStreetMap map tiles (packaging/osm_tiles.py) because the OSM data API wasn't reachable from the build machine. Map data (c) OpenStreetMap contributors, ODbL. carriageway_separation: distance between the centers of a divided road's two carriageways (0 = undivided), measured the same way; the demo build turns it into a median width for each scenario's lane layout. schools: school grounds found on the same map tiles (labels read from the map). Lanes and speeds for each demo scenario are set in packaging/build_demo.py and are illustrative.",
  "university_dr_tempe": {
   "name": "E University Dr",
   "centerline": [
@@ -175,6 +175,195 @@
    },
    {
     "station_ft": 1378,
+    "separation_ft": 0.0
+   }
+  ]
+ },
+ "mesquite_st_gilbert": {
+  "name": "E Mesquite St",
+  "intersections": [
+   {
+    "cross_street": "S Lindsay Rd",
+    "signalized": false,
+    "at": {
+     "lat": 33.342801,
+     "lon": -111.772985
+    }
+   },
+   {
+    "cross_street": "S 29th Pl",
+    "signalized": false,
+    "at": {
+     "lat": 33.342827,
+     "lon": -111.770139
+    }
+   },
+   {
+    "cross_street": "S 31st St",
+    "signalized": false,
+    "at": {
+     "lat": 33.342879,
+     "lon": -111.764275
+    }
+   }
+  ],
+  "schools": [
+   {
+    "name": "Mesquite Elementary School",
+    "lat": 33.344081,
+    "lon": -111.766448
+   },
+   {
+    "name": "Gilbert High School",
+    "lat": 33.347845,
+    "lon": -111.766405
+   }
+  ],
+  "centerline": [
+   {
+    "lat": 33.342805,
+    "lon": -111.772554
+   },
+   {
+    "lat": 33.342909,
+    "lon": -111.76094
+   }
+  ],
+  "carriageway_separation": [
+   {
+    "station_ft": 0,
+    "separation_ft": 0.0
+   },
+   {
+    "station_ft": 3544,
+    "separation_ft": 0.0
+   }
+  ]
+ },
+ "elliot_rd_gilbert": {
+  "name": "E Elliot Rd",
+  "intersections": [
+   {
+    "cross_street": "S Lindsay Rd",
+    "signalized": true,
+    "at": {
+     "lat": 33.350082,
+     "lon": -111.773049
+    }
+   },
+   {
+    "cross_street": "N Gilbert Tiger Dr",
+    "signalized": true,
+    "at": {
+     "lat": 33.350105,
+     "lon": -111.768594
+    }
+   },
+   {
+    "cross_street": "N Lakeview Dr",
+    "signalized": true,
+    "at": {
+     "lat": 33.350127,
+     "lon": -111.764377
+    }
+   }
+  ],
+  "schools": [
+   {
+    "name": "Gilbert High School",
+    "lat": 33.347845,
+    "lon": -111.766405
+   }
+  ],
+  "centerline": [
+   {
+    "lat": 33.350066,
+    "lon": -111.776213
+   },
+   {
+    "lat": 33.350166,
+    "lon": -111.756855
+   }
+  ],
+  "carriageway_separation": [
+   {
+    "station_ft": 0,
+    "separation_ft": 0.0
+   },
+   {
+    "station_ft": 5788,
+    "separation_ft": 0.0
+   },
+   {
+    "station_ft": 5827,
+    "separation_ft": 36.0
+   },
+   {
+    "station_ft": 5906,
+    "separation_ft": 36.8
+   }
+  ]
+ },
+ "southern_ave_mesa": {
+  "name": "E Southern Ave",
+  "intersections": [
+   {
+    "cross_street": "S Harris Dr",
+    "signalized": true,
+    "at": {
+     "lat": 33.393473,
+     "lon": -111.796902
+    }
+   },
+   {
+    "cross_street": "S Hall St",
+    "signalized": true,
+    "at": {
+     "lat": 33.393526,
+     "lon": -111.793069
+    }
+   },
+   {
+    "cross_street": "S Gilbert Rd",
+    "signalized": true,
+    "at": {
+     "lat": 33.393591,
+     "lon": -111.788335
+    }
+   }
+  ],
+  "schools": [
+   {
+    "name": "Mesa High School",
+    "lat": 33.397124,
+    "lon": -111.794708
+   }
+  ],
+  "centerline": [
+   {
+    "lat": 33.393367,
+    "lon": -111.804541
+   },
+   {
+    "lat": 33.393635,
+    "lon": -111.785175
+   }
+  ],
+  "carriageway_separation": [
+   {
+    "station_ft": 0,
+    "separation_ft": 40.9
+   },
+   {
+    "station_ft": 433,
+    "separation_ft": 19.6
+   },
+   {
+    "station_ft": 472,
+    "separation_ft": 0.0
+   },
+   {
+    "station_ft": 5906,
     "separation_ft": 0.0
    }
   ]

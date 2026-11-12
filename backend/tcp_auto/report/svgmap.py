@@ -169,6 +169,7 @@ def render_plan_svg(plan: TcpPlan, road: RoadContext, details: ProjectDetails) -
         if s_min - 40 <= ix.station_ft <= s_max + 40:
             out.append(_intersection_label(X(ix.station_ft), max(40.0, 64 * sx), ix.cross_street, ix.signalized))
 
+    school_y = 46 if yb > ROAD_Y else 36  # keep clear of the dimension callouts when they are above the road
     # School: marker at the school's station (or at the map edge, pointing toward it)
     sch = details.nearby_school
     if sch and sch.lat is not None and (details.school_zone or sch.distance_ft <= 1500):
@@ -177,9 +178,9 @@ def render_plan_svg(plan: TcpPlan, road: RoadContext, details: ProjectDetails) -
         side = ["north", "east", "south", "west"][int(((fwd + (90 if off > 0 else -90)) % 360 + 45) % 360 // 90)]
         xs = X(min(max(st, s_min), s_max))
         edge = "" if s_min <= st <= s_max else (" (beyond map ←)" if st < s_min else " (beyond map →)")
-        out.append(_school_marker(min(max(xs, 16), W - 16), 46, f"{sch.name}, {side} side, ~{sch.distance_ft:,} ft{edge}", details.school_zone))
+        out.append(_school_marker(min(max(xs, 16), W - 16), school_y, f"{sch.name}, {side} side, ~{sch.distance_ft:,} ft{edge}", details.school_zone))
     elif details.school_zone:
-        out.append(_school_marker(MARGIN_X + 10, 46, "location not mapped", True))
+        out.append(_school_marker(MARGIN_X + 10, school_y, "location not mapped", True))
 
     # North arrow and scale bar
     rot = 90 - cl.bearing_deg((dims.work_start_station_ft + dims.work_end_station_ft) / 2)
@@ -277,12 +278,13 @@ def render_timeline_svg(phases, night_phases: list[str]) -> str:
     start = min(p.start_date for p in phases)
     end = max(p.end_date for p in phases)
     days = max(1, (end - start).days + 1)
-    left, width = 200, 760
+    # compact: sized for a one-third-page column
+    left, width = 112, 340
     row_h = 26
     h = 40 + row_h * len(phases)
-    out = [f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 {h}" width="100%" font-family="Arial, Helvetica, sans-serif" font-size="11">']
+    out = [f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 460 {h}" width="100%" font-family="Arial, Helvetica, sans-serif" font-size="11">']
     for k in range(days + 1):
-        if days <= 31 or k % max(1, days // 15) == 0:
+        if k % max(1, math.ceil(days / 7)) == 0:  # about 7 date labels fit the column
             x = left + width * k / days
             out.append(f'<line x1="{x:.1f}" y1="22" x2="{x:.1f}" y2="{h - 6}" stroke="#ddd"/>')
             if k < days:
@@ -295,7 +297,8 @@ def render_timeline_svg(phases, night_phases: list[str]) -> str:
         x0 = left + width * (p.start_date - start).days / days
         x1 = left + width * ((p.end_date - start).days + 1) / days
         night = p.name in night_phases
-        out.append(f'<text x="6" y="{y + 14}" fill="#222">{_esc(p.name)}</text>')
+        name = p.name if len(p.name) <= 17 else p.name[:16] + "…"
+        out.append(f'<text x="4" y="{y + 14}" fill="#222">{_esc(name)}</text>')
         out.append(f'<rect x="{x0:.1f}" y="{y}" width="{max(4, x1 - x0):.1f}" height="18" rx="3" fill="{"#1e3a5f" if night else "#f07c1b"}"/>')
         out.append(f'<text x="{x0 + 6:.1f}" y="{y + 13}" fill="#fff">{p.start_time:%H:%M}-{p.end_time:%H:%M}{" (night)" if night else ""}</text>')
     out.append("</svg>")

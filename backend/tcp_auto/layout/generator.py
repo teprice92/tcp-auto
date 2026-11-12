@@ -252,7 +252,7 @@ def generate(
         duration=timeline.duration,
         duration_days=timeline.duration_days,
         flagging=template == "two_lane_flagger",
-        bike_lane_closed=road.has_bike_lane and details.side == "right" and not road.one_way,
+        bike_lane_closed=road.has_bike_lane and (not road.one_way or details.side == "right"),
         capacity_reduction_pct=(100.0 / g.lanes_affected_dir) if lane_closure and g.lanes_affected_dir and template != "lane_shift_twltl" else 0.0,
         during_peak=timeline.during_peak,
     )
@@ -315,11 +315,11 @@ def generate(
 
     # --- advance warning signs (affected direction) ---------------------------------------------
     u0 = buf + taper
-    lr = "R" if g.sgn == 1 else "L"
+    lr = "R" if g.sgn * g.dir == 1 else "L"  # closed lane as the approaching driver sees it (curb lane = right on two-way roads)
     if template == "lane_closure_multilane":
         seq = [(A, "W4-2" + lr, "LANE ENDS"), (A + B, "W20-5" + lr, f"{'RIGHT' if lr == 'R' else 'LEFT'} LANE CLOSED AHEAD"), (A + B + C, "W20-1", "ROAD WORK AHEAD")]
     elif template == "lane_shift_twltl":
-        shift = "L" if g.sgn == 1 else "R"
+        shift = "L" if lr == "R" else "R"  # traffic shifts away from the closed lane
         seq = [(A, "W1-4" + shift, "LANE SHIFT (reverse curve)"), (A + B, "W20-5" + lr, f"{'RIGHT' if lr == 'R' else 'LEFT'} LANE CLOSED AHEAD"),
                (A + B + C, "W20-1", "ROAD WORK AHEAD")]
     elif template == "two_lane_flagger":
