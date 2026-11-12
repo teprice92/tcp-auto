@@ -201,3 +201,80 @@ def test_far_side_closure_is_drivers_right_lane(make_project):
     p = make_project(side="left", road_kw=dict(one_way=True, lanes_forward=3, lanes_backward=0))
     plan, _, _ = build_plan(p)
     assert [d.code for d in plan.devices if d.group == "advance_warning"][:2] == ["W4-2L", "W20-5L"]  # one-way: really the left lane
+
+
+def _access_project(make_project, **road_kw):
+    # work center ~ station 2280 (conftest), eastbound right lane; 40 mph: taper 320, buffer 305, work 250
+    return make_project(road_kw=road_kw)
+
+
+def test_right_turn_lane_cut_off_by_closure_is_closed(make_project):
+    from tcp_auto.models import Intersection, TurnLane
+
+    p = _access_project(make_project, intersections=[Intersection(station_ft=2600, cross_street="S Mill Ave", signalized=True)],
+                        turn_lanes=[TurnLane(side="right", start_station_ft=2350, end_station_ft=2600, cross_street="S Mill Ave")])
+    plan, _, _ = build_plan(p)
+    closed = [d for d in plan.devices if d.group == "turn_lane" and d.type in (DeviceType.cone, DeviceType.drum)]
+    assert len(closed) == 3
+    assert any(d.code == "R3-1" for d in plan.devices)
+    assert any(r.kind == "access" and "closed during work" in r.text for r in plan.requirements)
+    assert any("Right-turn lane to S Mill Ave starts inside the closed section" in i.message for i in plan.issues)
+    tz = next(z for z in plan.zones if z.kind == "turn_lane")
+    assert "closed" in tz.label
+
+
+def test_right_turn_lane_past_the_taper_is_flagged_and_signs_move_out(make_project):
+    from tcp_auto.geo import Centerline
+    from tcp_auto.models import LatLon, TurnLane
+
+    base, _, _ = build_plan(make_project())
+    end = base.dimensions.work_end_station_ft
+    p = _access_project(make_project, turn_lanes=[TurnLane(side="right", start_station_ft=end + 120, end_station_ft=end + 400, cross_street="S Ash Ave"),
+                                                  TurnLane(side="right", start_station_ft=0, end_station_ft=1200, cross_street="S Farmer Ave")])
+    plan, _, _ = build_plan(p)
+    assert any("Right-turn lane to S Ash Ave begins" in i.message for i in plan.issues)
+    assert not any(d.group == "turn_lane" for d in plan.devices)
+    # advance signs standing beside the S Farmer Ave turn lane are placed outside it (24 + 12 + 6 ft right of center)
+    cl = Centerline.for_road(p.road)
+    for sg in (d for d in plan.devices if d.type == DeviceType.sign and d.group == "advance_warning" and d.station_ft < 1200):
+        assert abs(cl.project(LatLon(lat=sg.lat, lon=sg.lon))[1] - 42) < 0.5
+
+
+def test_driveways_blocked_and_kept_open(make_project):
+    from tcp_auto.models import Driveway
+
+    base, _, _ = build_plan(make_project())
+    dims = base.dimensions
+    mid = (dims.work_start_station_ft + dims.work_end_station_ft) / 2
+    in_buffer = dims.work_start_station_ft - 150
+    p = _access_project(make_project, driveways=[Driveway(station_ft=mid, side="right", name="Chevron"),
+                                                 Driveway(station_ft=in_buffer, side="right", name="Wells Fargo"),
+                                                 Driveway(station_ft=mid, side="left", name="Across the street")])
+    plan, _, _ = build_plan(p)
+    msgs = " ".join(i.message for i in plan.issues)
+    assert "Driveway (Chevron) is inside the work area" in msgs and "Driveway (Wells Fargo) is inside the closed section" in msgs
+    assert "Across the street" not in msgs  # other side, multilane closure: unaffected
+    assert any(r.kind == "notice" and "Chevron" in r.text for r in plan.requirements)
+    # gap in the tangent line at the kept-open driveway, and the compliance check accepts it
+    assert not any(d.group == "tangent" and abs(d.station_ft - in_buffer) < 15 for d in plan.devices)
+    assert not any("Tangent device gap" in i.message for i in plan.issues)
+    assert sum(z.kind == "driveway" for z in plan.zones) == 3
+
+
+def test_driveway_in_flagger_section_either_side(make_project):
+    from tcp_auto.models import Driveway
+
+    p = make_project(road_kw=dict(lanes_forward=1, lanes_backward=1, speed_mph=30, road_class="collector"))
+    base, _, _ = build_plan(p)
+    mid = (base.dimensions.work_start_station_ft + base.dimensions.work_end_station_ft) / 2
+    p.road.driveways = [Driveway(station_ft=mid + 40, side="left", name="Church lot")]
+    plan, _, _ = build_plan(p)
+    assert any("Church lot" in i.message and "flaggers" in i.message for i in plan.issues)
+
+
+def test_shoulder_work_beside_turn_lane_warns(make_project):
+    from tcp_auto.models import TurnLane
+
+    p = make_project(work_position="shoulder", road_kw=dict(turn_lanes=[TurnLane(side="right", start_station_ft=2000, end_station_ft=2500, cross_street="S Mill Ave")]))
+    plan, _, _ = build_plan(p)
+    assert any("beside the shoulder work" in i.message for i in plan.issues)

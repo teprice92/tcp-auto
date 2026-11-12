@@ -86,6 +86,42 @@ def render_plan_svg(plan: TcpPlan, road: RoadContext, details: ProjectDetails) -
         if s_min - 40 <= ix.station_ft <= s_max + 40:
             out.append(_intersection(X(ix.station_ft), max(40.0, 64 * sx), top, bot, ix.cross_street, ix.signalized))
 
+    # Right-turn lanes (extra pavement outside the curb lane) and driveways (in the sidewalk strip)
+    dw_label_end = {1: -1e9, -1: -1e9}
+    for z in sorted(plan.zones, key=lambda z: z.start_station_ft):
+        if z.kind not in ("turn_lane", "driveway"):
+            continue
+        pts = [cl.project(p) for p in z.polygon]
+        xa, xb = sorted((X(min(st for st, _ in pts)), X(max(st for st, _ in pts))))
+        xa, xb = max(xa, MARGIN_X - 20), min(xb, W - MARGIN_X + 20)
+        if xb <= xa:
+            continue
+        sgn = 1 if sum(o for _, o in pts) > 0 else -1
+        e = Y(right_edge if sgn > 0 else left_edge)
+        if z.kind == "turn_lane":
+            hpx = w * sy
+            y0 = e if sgn > 0 else e - hpx
+            closed = "(closed)" in z.label
+            fill = 'fill="url(#hatch)" fill-opacity="0.55"' if closed else 'fill="#6b6f74"'
+            out.append(f'<rect x="{xa:.1f}" y="{y0:.1f}" width="{xb - xa:.1f}" height="{hpx:.1f}" {fill}/>')
+            out.append(f'<line x1="{xa:.1f}" y1="{e:.1f}" x2="{xb:.1f}" y2="{e:.1f}" stroke="#fff" stroke-width="2"/>')
+            ym = y0 + hpx / 2
+            ax = xb - 30 if sgn > 0 else xa + 30
+            d_ = 1 if sgn > 0 else -1  # arrow points downstream along that side's traffic, then turns right
+            out.append(f'<path d="M{ax - 14 * d_:.1f},{ym:.1f} h{12 * d_} q{4 * d_},0 {4 * d_},{4 * d_} v2" fill="none" stroke="#fff" stroke-width="1.6"/>')
+            out.append(f'<text x="{(xa + xb) / 2:.1f}" y="{ym + 3.5:.1f}" font-size="9" text-anchor="middle" fill="{"#7a2e00" if closed else "#e6e8eb"}"{HALO if closed else ""}>'
+                       f'RT LANE{" CLOSED" if closed else ""}</text>')
+        else:
+            y0 = e if sgn > 0 else e - 26
+            out.append(f'<rect x="{xa:.1f}" y="{y0:.1f}" width="{xb - xa:.1f}" height="26" fill="#b9c0c9" stroke="#8a939e" stroke-dasharray="3 2"/>')
+            ty = y0 + 26 + 10 if sgn > 0 else y0 - 4
+            name = z.label if len(z.label) <= 16 else z.label[:15].rstrip() + "…"
+            half = 2.4 * len(name)
+            xc = (xa + xb) / 2
+            if xc - half > dw_label_end[sgn] + 4:  # skip a label that would overlap its neighbour
+                out.append(f'<text x="{xc:.1f}" y="{ty:.1f}" font-size="8" text-anchor="middle" fill="#3b4250"{HALO}>{_esc(name)}</text>')
+                dw_label_end[sgn] = xc + half
+
     # Direction arrows
     if not road.one_way:
         out.append(_arrow(MARGIN_X + 10, Y(right_edge - w / 2), 1))
@@ -98,7 +134,7 @@ def render_plan_svg(plan: TcpPlan, road: RoadContext, details: ProjectDetails) -
     # Zones
     colors = {"buffer": ("#ffffff", 0.35), "taper": ("#f07c1b", 0.25), "reduced_speed": ("#2b6cb0", 0.08)}
     for z in plan.zones:
-        if z.kind == "roadway":
+        if z.kind in ("roadway", "center_lane", "turn_lane", "driveway"):
             continue
         pts = [cl.project(p) for p in z.polygon]
         path = " ".join(f"{X(s):.1f},{Y(o):.1f}" for s, o in pts)
@@ -109,7 +145,7 @@ def render_plan_svg(plan: TcpPlan, road: RoadContext, details: ProjectDetails) -
             out.append(f'<polygon points="{path}" fill="{c}" fill-opacity="{a}" stroke="none"/>')
 
     # Devices
-    label_rows: dict[int, float] = {}
+    label_rows: dict[tuple, list] = {}
     for dv in sorted(plan.devices, key=lambda d: d.station_ft or 0):
         x, y = X(raw[dv.id][0]), Y(raw[dv.id][1])
         t = dv.type
@@ -139,10 +175,9 @@ def render_plan_svg(plan: TcpPlan, road: RoadContext, details: ProjectDetails) -
             # stagger labels so neighbouring signs don't collide
             above = (dv.offset_ft or 0) < 0
             row = 0
-            key = int(x // 70)
-            while label_rows.get(key * 10 + row + (0 if above else 5), -1e9) > x - 70 and row < 3:
+            while any(abs(px_ - x) < 48 for px_ in label_rows.get((above, row), [])) and row < 3:
                 row += 1
-            label_rows[key * 10 + row + (0 if above else 5)] = x
+            label_rows.setdefault((above, row), []).append(x)
             ly = y - 12 - row * 12 if above else y + 20 + row * 12
             out.append(f'<text x="{x:.1f}" y="{ly:.1f}" font-size="10" text-anchor="middle" fill="#222" font-weight="bold"{HALO}>{_esc(dv.code or "")}</text>')
 

@@ -1,5 +1,5 @@
 {
- "_about": "Road centerlines for the online demo, measured from OpenStreetMap map tiles (packaging/osm_tiles.py) because the OSM data API wasn't reachable from the build machine. Map data (c) OpenStreetMap contributors, ODbL. carriageway_separation: distance between the centers of a divided road's two carriageways (0 = undivided), measured the same way; the demo build turns it into a median width for each scenario's lane layout. schools: school grounds found on the same map tiles (labels read from the map). Lanes and speeds for each demo scenario are set in packaging/build_demo.py and are illustrative.",
+ "_about": "Road centerlines for the online demo, measured from OpenStreetMap map tiles (packaging/osm_tiles.py) because the OSM data API wasn't reachable from the build machine. Map data (c) OpenStreetMap contributors, ODbL. carriageway_separation: distance between the centers of a divided road's two carriageways (0 = undivided), measured the same way; the demo build turns it into a median width for each scenario's lane layout. schools: school grounds found on the same map tiles (labels read from the map). Lanes and speeds for each demo scenario are set in packaging/build_demo.py and are illustrative. driveways: where service roads meet the street on the same tiles (names from the map labels). turn_lanes: illustrative.",
  "university_dr_tempe": {
   "name": "E University Dr",
   "centerline": [
@@ -62,6 +62,48 @@
    {
     "station_ft": 5906,
     "separation_ft": 0.0
+   }
+  ],
+  "driveways": [
+   {
+    "name": "Chevron plaza",
+    "side": "right",
+    "at": {
+     "lat": 33.42195,
+     "lon": -111.925369
+    }
+   },
+   {
+    "name": "Delhi Palace plaza",
+    "side": "right",
+    "at": {
+     "lat": 33.42195,
+     "lon": -111.924886
+    }
+   },
+   {
+    "name": "Burrito Express plaza",
+    "side": "right",
+    "at": {
+     "lat": 33.42195,
+     "lon": -111.924572
+    }
+   },
+   {
+    "name": "University Park Apartments",
+    "side": "right",
+    "at": {
+     "lat": 33.42195,
+     "lon": -111.92322
+    }
+   },
+   {
+    "name": "ASU Tempe Modern Condo",
+    "side": "right",
+    "at": {
+     "lat": 33.42195,
+     "lon": -111.922641
+    }
    }
   ]
  },
@@ -135,6 +177,39 @@
    {
     "station_ft": 5906,
     "separation_ft": 0.0
+   }
+  ],
+  "driveways": [
+   {
+    "name": "Medical plaza (201 W Guadalupe)",
+    "side": "right",
+    "at": {
+     "lat": 33.364334,
+     "lon": -111.793364
+    }
+   },
+   {
+    "name": "Smart & Final (west entrance)",
+    "side": "right",
+    "at": {
+     "lat": 33.364334,
+     "lon": -111.793029
+    }
+   },
+   {
+    "name": "Smart & Final (main entrance)",
+    "side": "right",
+    "at": {
+     "lat": 33.364334,
+     "lon": -111.792036
+    }
+   }
+  ],
+  "turn_lanes": [
+   {
+    "cross_street": "N Gilbert Rd",
+    "side": "right",
+    "length_ft": 300
    }
   ]
  },

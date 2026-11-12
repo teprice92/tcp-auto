@@ -84,15 +84,16 @@ function toXY(f, p) {
 }
 function stationOf(pts, p) {
   const f = frameFor(pts); const xy = pts.map(q => toXY(f, q)); const [px, py] = toXY(f, p);
-  let best = [Infinity, 0], cum = 0;
+  let best = [Infinity, 0, "right"], cum = 0;
   for (let i = 0; i < xy.length - 1; i++) {
     const [x0, y0] = xy[i], [x1, y1] = xy[i + 1]; const dx = x1 - x0, dy = y1 - y0; const L2 = dx * dx + dy * dy || 1;
     const t = Math.max(0, Math.min(1, ((px - x0) * dx + (py - y0) * dy) / L2));
     const d = Math.hypot(px - (x0 + dx * t), py - (y0 + dy * t));
-    if (d < best[0]) best = [d, cum + t * Math.sqrt(L2)];
+    const cross = dx * (py - y0) - dy * (px - x0); // > 0: left of the drawn direction
+    if (d < best[0]) best = [d, cum + t * Math.sqrt(L2), cross > 0 ? "left" : "right"];
     cum += Math.sqrt(L2);
   }
-  return { station: best[1], distance: best[0] };
+  return { station: best[1], distance: best[0], side: best[2] };
 }
 
 // ---------------------------------------------------------------- map
@@ -111,7 +112,7 @@ map.on("dblclick", () => { if (state.mode === "centerline") finishCenterline(); 
 function setMode(mode, hint = "") {
   state.mode = mode;
   $$("button.active").forEach(b => b.classList.remove("active"));
-  const ids = { work: "#modeWork", centerline: "#modeCenterline", intersection: "#modeIntersection" };
+  const ids = { work: "#modeWork", centerline: "#modeCenterline", intersection: "#modeIntersection", turnlane: "#modeTurnLane", driveway: "#modeDriveway" };
   if (ids[mode]) $(ids[mode]).classList.add("active");
   if (mode && mode.startsWith("place:")) { const b = $(`#palette button[data-type="${mode.slice(6)}"]`); if (b) b.classList.add("active"); }
   $("#modebar").classList.toggle("hidden", !mode);
@@ -150,6 +151,27 @@ async function onMapClick(ll) {
     p.road.intersections.sort((a, b) => a.station_ft - b.station_ft);
     await save({ road: p.road }); setMode(null); return;
   }
+  if (state.mode === "turnlane" || state.mode === "driveway") {
+    if (!p.road) throw new Error("Save the road centerline first");
+    const { station, distance, side } = stationOf(p.road.centerline, pt);
+    if (distance > 250) throw new Error("Click beside the road, on the side where it is");
+    const sideSel = `<label class="f">Side of the road <select name="side"><option value="right"${side === "right" ? " selected" : ""}>Right of the drawn direction</option><option value="left"${side === "left" ? " selected" : ""}>Left of the drawn direction</option></select></label>`;
+    if (state.mode === "driveway") {
+      const v = await ask("Add driveway", `<label class="f">Business or name (optional) <input name="name" placeholder="e.g. Chevron, school bus loop"></label><label class="f">Width (ft) <input name="width" type="number" value="30" min="10" max="80"></label>${sideSel}`, "Add");
+      if (!v) return;
+      (p.road.driveways = p.road.driveways || []).push({ station_ft: Math.round(station), side: v.side, name: v.name || "", width_ft: Number(v.width) || 30 });
+      p.road.driveways.sort((a, b) => a.station_ft - b.station_ft);
+    } else {
+      const ints = p.road.intersections || [];
+      if (!ints.length) throw new Error("Add the intersection first; the turn lane ends there");
+      const near = ints.reduce((a, b) => Math.abs(b.station_ft - station) < Math.abs(a.station_ft - station) ? b : a);
+      const v = await ask("Add right-turn lane", `<p class="muted">The lane runs from where you clicked (station ${Math.round(station)} ft) to the intersection.</p><label class="f">Ends at <select name="ix">${ints.map((ix, k) => `<option value="${k}"${ix === near ? " selected" : ""}>${esc(ix.cross_street || "(unnamed)")} @ ${Math.round(ix.station_ft)} ft</option>`).join("")}</select></label>${sideSel}`, "Add");
+      if (!v) return;
+      const ix = ints[Number(v.ix)];
+      (p.road.turn_lanes = p.road.turn_lanes || []).push({ side: v.side, start_station_ft: Math.round(station), end_station_ft: Math.round(ix.station_ft), cross_street: ix.cross_street || "" });
+    }
+    await save({ road: p.road }); setMode(null); return;
+  }
   if (state.mode && state.mode.startsWith("place:")) {
     if (!p.plan) throw new Error("Generate a plan first");
     const type = state.mode.slice(6);
@@ -175,6 +197,7 @@ async function finishCenterline() {
   const road = p.road ? { ...p.road } : defaultRoad();
   road.centerline = state.draftLine;
   road.intersections = []; // stations change with a new line
+  road.turn_lanes = []; road.driveways = [];
   road.median = []; // a hand-drawn line follows one roadway; the median profile no longer applies
   road.divided = false;
   road.sources = { ...(road.sources || {}), centerline: "user" };
@@ -184,7 +207,7 @@ async function finishCenterline() {
   status("Centerline saved");
 }
 function defaultRoad() {
-  return { name: "", centerline: [], speed_mph: 35, speed_confirmed: false, lanes_forward: 1, lanes_backward: 1, lane_width_ft: 12, one_way: false, divided: false, road_class: "collector", has_bike_lane: false, has_sidewalk: true, intersections: [], sources: {} };
+  return { name: "", centerline: [], speed_mph: 35, speed_confirmed: false, lanes_forward: 1, lanes_backward: 1, lane_width_ft: 12, one_way: false, divided: false, road_class: "collector", has_bike_lane: false, has_sidewalk: true, center_turn_lane: false, intersections: [], turn_lanes: [], driveways: [], median: [], sources: {} };
 }
 
 // ---------------------------------------------------------------- rendering
@@ -220,7 +243,7 @@ function esc(s) { return String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;
 function drawPlan(fit = false) {
   layers.zones.clearLayers(); layers.devices.clearLayers(); markers = {};
   const plan = state.project && state.project.plan; if (!plan) return;
-  const styles = { roadway: { color: "#475467", weight: 1, fillColor: "#98a2b3", fillOpacity: .35, interactive: false }, work_area: { color: "#c05800", fillColor: "#f07c1b", fillOpacity: .35, weight: 1 }, buffer: { color: "#999", fillOpacity: .1, weight: 1, dashArray: "4" }, taper: { color: "#f07c1b", fillOpacity: .15, weight: 1 }, reduced_speed: { color: "#1d4ed8", fillOpacity: .04, weight: 1, dashArray: "6" }, center_lane: { color: "#d4a20b", weight: 1.5, dashArray: "8 6", fillColor: "#98a2b3", fillOpacity: .35, interactive: false } };
+  const styles = { roadway: { color: "#475467", weight: 1, fillColor: "#98a2b3", fillOpacity: .35, interactive: false }, work_area: { color: "#c05800", fillColor: "#f07c1b", fillOpacity: .35, weight: 1 }, buffer: { color: "#999", fillOpacity: .1, weight: 1, dashArray: "4" }, taper: { color: "#f07c1b", fillOpacity: .15, weight: 1 }, reduced_speed: { color: "#1d4ed8", fillOpacity: .04, weight: 1, dashArray: "6" }, center_lane: { color: "#d4a20b", weight: 1.5, dashArray: "8 6", fillColor: "#98a2b3", fillOpacity: .35, interactive: false }, turn_lane: { color: "#475467", weight: 1.5, fillColor: "#98a2b3", fillOpacity: .45 }, driveway: { color: "#7a5af8", weight: 1.5, dashArray: "3 3", fillColor: "#bdb4fe", fillOpacity: .45 } };
   plan.zones.forEach(z => L.polygon(z.polygon.map(q => [q.lat, q.lon]), styles[z.kind] || {}).addTo(layers.zones).bindTooltip(z.label));
   plan.devices.forEach(dv => {
     const m = L.marker([dv.lat, dv.lon], { icon: iconFor(dv), draggable: true, title: `${dv.label || dv.type}${dv.code ? " (" + dv.code + ")" : ""}` });
@@ -421,6 +444,20 @@ function fillRoad() {
     $("button", li).onclick = () => { r.intersections.splice(k, 1); fillRoad(); };
     ul.appendChild(li);
   });
+  const tl = $("#tlList"); tl.innerHTML = "";
+  (r.turn_lanes || []).forEach((t, k) => {
+    const li = document.createElement("li");
+    li.innerHTML = `<span class="grow">To ${esc(t.cross_street || "(unnamed)")} · ${t.side} side · ${Math.round(Math.abs(t.end_station_ft - t.start_station_ft))} ft</span><button type="button" class="danger">×</button>`;
+    $("button", li).onclick = () => { r.turn_lanes.splice(k, 1); fillRoad(); };
+    tl.appendChild(li);
+  });
+  const dl = $("#dwList"); dl.innerHTML = "";
+  (r.driveways || []).forEach((dw, k) => {
+    const li = document.createElement("li");
+    li.innerHTML = `<span class="grow">${esc(dw.name || "Driveway")} @ ${Math.round(dw.station_ft)} ft · ${dw.side}</span><button type="button" class="danger">×</button>`;
+    $("button", li).onclick = () => { r.driveways.splice(k, 1); fillRoad(); };
+    dl.appendChild(li);
+  });
   const src = r.sources || {};
   const med = Math.max(0, ...(r.median || []).map(m => m.width_ft));
   $("#roadSources").textContent = (med > 0 ? `Divided road: median up to ${Math.round(med)} ft (the plan follows each side's carriageway). ` : "")
@@ -432,7 +469,11 @@ function readRoad() {
     if (!el.name) continue;
     r[el.name] = el.type === "checkbox" ? el.checked : el.type === "number" ? Number(el.value) : el.value;
   }
-  if (state.project.road) r.intersections = state.project.road.intersections;
+  if (state.project.road) {
+    r.intersections = state.project.road.intersections;
+    r.turn_lanes = state.project.road.turn_lanes || [];
+    r.driveways = state.project.road.driveways || [];
+  }
   r.sources = { ...(r.sources || {}), speed_mph: r.speed_confirmed ? "user" : (r.sources || {}).speed_mph || "rule_default" };
   return r;
 }
@@ -513,6 +554,8 @@ async function init() {
   $("#modeWork").onclick = () => setMode(state.mode === "work" ? null : "work", "Click the center of the poles or equipment.");
   $("#modeCenterline").onclick = () => { if (state.mode === "centerline") finishCenterline(); else setMode("centerline", "Click along the street in one direction, about 1,500 ft past the work on each end."); };
   $("#modeIntersection").onclick = () => setMode(state.mode === "intersection" ? null : "intersection", "Click where the cross street meets the road.");
+  $("#modeTurnLane").onclick = () => setMode(state.mode === "turnlane" ? null : "turnlane", "Click beside the road where the right-turn lane begins.");
+  $("#modeDriveway").onclick = () => setMode(state.mode === "driveway" ? null : "driveway", "Click on the driveway where it meets the road.");
   $("#modeDone").onclick = () => finishCenterline();
   $("#modeCancel").onclick = () => { setMode(null); layers.draft.clearLayers(); };
   const dz = $("#dropZone");

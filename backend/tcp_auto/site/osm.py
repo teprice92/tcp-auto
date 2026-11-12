@@ -14,7 +14,7 @@ import re
 import httpx
 
 from ..geo import Centerline, haversine_ft
-from ..models import Intersection, LatLon, MedianPoint, RoadClass, RoadContext
+from ..models import Driveway, Intersection, LatLon, MedianPoint, RoadClass, RoadContext, TurnLane
 
 OVERPASS_URL = os.environ.get("TCP_OVERPASS_URL", "https://overpass-api.de/api/interpreter")
 NOMINATIM_URL = os.environ.get("TCP_NOMINATIM_URL", "https://nominatim.openstreetmap.org/search")
@@ -265,7 +265,7 @@ def parse_overpass(data: dict, lat: float, lon: float) -> tuple[RoadContext, dic
     signals = {e["id"] for e in elements if e["type"] == "node" and e.get("tags", {}).get("highway") == "traffic_signals"}
     others: dict[int, str] = {}
     for e in elements:
-        if e["type"] == "way" and e["id"] != main["id"] and e.get("tags", {}).get("highway") in DRIVABLE:
+        if e["type"] == "way" and e["id"] != main["id"] and e.get("tags", {}).get("highway") in DRIVABLE and e.get("tags", {}).get("highway") != "service":
             nm = e.get("tags", {}).get("name", "")
             if nm and nm == tags.get("name"):
                 continue
@@ -288,6 +288,10 @@ def parse_overpass(data: dict, lat: float, lon: float) -> tuple[RoadContext, dic
         if abs(off) < 80 and not any(abs(st - ix.station_ft) < 120 for ix in ints):
             ints.append(Intersection(station_ft=round(st, 1), cross_street="", signalized=True))
 
+    route_set = set(route_nodes)
+    driveways = _driveways(ways, route_set, coords, cl)
+    turn_lanes = _turn_lanes(ways, tags.get("name"), route_set, cl, ints)
+
     schools = []
     for e in elements:
         if e.get("tags", {}).get("amenity") == "school":
@@ -301,9 +305,54 @@ def parse_overpass(data: dict, lat: float, lon: float) -> tuple[RoadContext, dic
         median=median, road_class=rclass,
         has_bike_lane=any(k.startswith("cycleway") and v in ("lane", "track") for k, v in tags.items()),
         has_sidewalk=tags.get("sidewalk", "both") != "no",
-        intersections=sorted(ints, key=lambda i: i.station_ft), sources=sources,
+        intersections=sorted(ints, key=lambda i: i.station_ft), sources=sources, turn_lanes=turn_lanes, driveways=driveways,
     )
     return road, {"schools": sorted(schools, key=lambda s: s["distance_ft"]), "osm_way_id": main["id"], "osm_partner_way_id": partner["id"] if partner else None, "highway": tags.get("highway")}
+
+
+def _driveways(ways: list[dict], route: set, coords: dict, cl: Centerline) -> list[Driveway]:
+    """Service roads (driveways, parking aisles) meeting the street: station, side and name."""
+    out: list[Driveway] = []
+    for w in ways:
+        t = w.get("tags", {})
+        nodes = w.get("nodes") or []
+        if t.get("highway") != "service" or len(nodes) != len(w["geometry"]) or t.get("service") in ("alley", "emergency_access"):
+            continue
+        for i in (0, len(nodes) - 1):
+            if nodes[i] in route and nodes[i] in coords:
+                st, _ = cl.project(coords[nodes[i]])
+                inner = w["geometry"][1 if i == 0 else -2]  # the next point away from the street gives the side
+                _, off = cl.project(LatLon(lat=inner["lat"], lon=inner["lon"]))
+                side = "right" if off > 0 else "left"
+                if not any(abs(d.station_ft - st) < 20 and d.side == side for d in out):
+                    out.append(Driveway(station_ft=round(st, 1), side=side, name=t.get("name", "")))
+    return sorted(out, key=lambda d: d.station_ft)
+
+
+def _turn_lanes(ways: list[dict], name: str | None, route: set, cl: Centerline, ints: list, max_len_ft: float = 400.0) -> list[TurnLane]:
+    """Right-turn lanes from turn:lanes tags: a way of this street whose rightmost lane is right-turn only.
+    OSM usually splits the street where a turn lane starts, so the way's extent (capped) is the lane."""
+    out: list[TurnLane] = []
+    for w in ways:
+        t = w.get("tags", {})
+        nodes = w.get("nodes") or []
+        if not name or t.get("name") != name or not set(nodes) & route or len(w["geometry"]) < 2:
+            continue
+        s0, _ = cl.project(LatLon(lat=w["geometry"][0]["lat"], lon=w["geometry"][0]["lon"]))
+        s1, _ = cl.project(LatLon(lat=w["geometry"][-1]["lat"], lon=w["geometry"][-1]["lon"]))
+        along = 1 if s1 >= s0 else -1  # the way's direction relative to the centerline
+        tagsets = [("turn:lanes", 1)] if _is_oneway(t) else [("turn:lanes:forward", 1), ("turn:lanes:backward", -1)]
+        for key, sense in tagsets:
+            lanes = t.get(key, "").split("|")
+            if not lanes or lanes[-1].strip() != "right":
+                continue
+            travel = along * sense  # +1: travels with the centerline's forward direction
+            end = max(s0, s1) if travel > 0 else min(s0, s1)
+            start = end - travel * min(abs(s1 - s0), max_len_ft)
+            ix = min(ints, key=lambda i: abs(i.station_ft - end), default=None)
+            cross = ix.cross_street if ix and abs(ix.station_ft - end) < 150 else ""
+            out.append(TurnLane(side="right" if travel > 0 else "left", start_station_ft=round(start, 1), end_station_ft=round(end, 1), cross_street=cross))
+    return out
 
 
 def lookup_road(lat: float, lon: float) -> tuple[RoadContext, dict]:

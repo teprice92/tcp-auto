@@ -113,6 +113,7 @@ def explain(project: Project, plan: TcpPlan) -> list[str]:
     near_ints = [dv for dv in plan.devices if dv.group == "cross_street"]
     if near_ints:
         extra.append("Cross-street approaches within the zone also receive ROAD WORK AHEAD signs.")
+    extra += [r.text for r in plan.requirements if r.kind == "access" and ("closed" in r.text or "blocked" in r.text)]
     if det.pedestrian_detour:
         extra.append("The sidewalk next to the work area will be closed with SIDEWALK CLOSED barricades; pedestrians will be directed to the other side.")
     elif road.has_sidewalk:

@@ -144,13 +144,23 @@
     if (taper.length >= 2) {
       const len = up(taper[taper.length - 1].station_ft) - up(taper[0].station_ft);
       if (len < D.taper_ft * TOL) issue("error", `Taper is ${len.toFixed(0)} ft; needs at least ${D.taper_ft.toFixed(0)} ft at ${D.speed_mph} mph (${D.taper_type}).`, taper.map(t => t.id));
-      let worst = 0; for (let i = 1; i < taper.length; i++) worst = Math.max(worst, up(taper[i].station_ft) - up(taper[i - 1].station_ft));
+      const dwT = (road.driveways || []).map(d => d.station_ft);
+      let worst = 0; for (let i = 1; i < taper.length; i++) {
+        const a = taper[i - 1].station_ft, b = taper[i].station_ft;
+        if (dwT.some(s => s > Math.min(a, b) && s < Math.max(a, b))) continue; // gap left for a driveway
+        worst = Math.max(worst, up(b) - up(a));
+      }
       if (worst > D.taper_spacing_ft / TOL) issue("warning", `Taper device gap of ${worst.toFixed(0)} ft exceeds ${D.taper_spacing_ft.toFixed(0)} ft spacing.`, taper.map(t => t.id));
       const buf = up(taper[0].station_ft);
       if (buf < D.buffer_ft * TOL) issue("warning", `Buffer space is ${buf.toFixed(0)} ft; recommended ${D.buffer_ft.toFixed(0)} ft at ${D.speed_mph} mph.`, [taper[0].id]);
     } else if (plan.template !== "shoulder" || taper.length) issue("error", "No taper devices found.");
     const tangent = plan.devices.filter(d => d.group === "tangent").sort((a, b) => up(b.station_ft) - up(a.station_ft));
-    let tg = 0; for (let i = 1; i < tangent.length; i++) tg = Math.max(tg, Math.abs(up(tangent[i - 1].station_ft) - up(tangent[i].station_ft)));
+    const dws = (road.driveways || []).map(d => d.station_ft);
+    let tg = 0; for (let i = 1; i < tangent.length; i++) {
+      const a = tangent[i - 1].station_ft, b = tangent[i].station_ft;
+      if (dws.some(s => s > Math.min(a, b) && s < Math.max(a, b))) continue; // gap left for a driveway
+      tg = Math.max(tg, Math.abs(up(a) - up(b)));
+    }
     if (tg > D.tangent_spacing_ft / TOL) issue("warning", `Tangent device gap of ${tg.toFixed(0)} ft exceeds ${D.tangent_spacing_ft.toFixed(0)} ft spacing.`);
     if (taper.length) {
       const signs = plan.devices.filter(d => d.group === "advance_warning" && d.type === "sign" && d.code !== "W16-1P").sort((a, b) => up(a.station_ft) - up(b.station_ft));
@@ -177,7 +187,7 @@
     return out;
   }
   function recheck(p) {
-    const keep = p.plan.issues.filter(i => i.severity === "info" || i.message.includes("Phase") || (i.message.toLowerCase().includes("speed") && i.message.includes("confirmed")) || i.message.includes("Intersection") || i.message.includes("one-way"));
+    const keep = p.plan.issues.filter(i => i.severity === "info" || i.message.includes("Phase") || (i.message.toLowerCase().includes("speed") && i.message.includes("confirmed")) || i.message.includes("Intersection") || i.message.includes("one-way") || i.message.includes("turn lane") || i.message.includes("Driveway"));
     p.plan.issues = keep.concat(check(p.plan, p.road));
   }
 

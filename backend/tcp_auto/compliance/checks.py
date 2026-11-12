@@ -44,7 +44,9 @@ def check(plan: TcpPlan, road: RoadContext) -> list[ComplianceIssue]:
                 message=f"Taper is {length:.0f} ft; needs at least {dims.taper_ft:.0f} ft at {dims.speed_mph} mph ({dims.taper_type}).",
                 device_ids=[t.id for t in taper],
             ))
-        gaps = [dist_up(b.station_ft) - dist_up(a.station_ft) for a, b in zip(taper, taper[1:])]
+        dws = [dw.station_ft for dw in road.driveways]
+        gaps = [dist_up(b.station_ft) - dist_up(a.station_ft) for a, b in zip(taper, taper[1:])
+                if not any(min(a.station_ft, b.station_ft) < st < max(a.station_ft, b.station_ft) for st in dws)]  # driveway gaps are intentional
         worst = max(gaps) if gaps else 0
         if worst > dims.taper_spacing_ft / TOL:
             out.append(ComplianceIssue(severity="warning", message=f"Taper device gap of {worst:.0f} ft exceeds {dims.taper_spacing_ft:.0f} ft spacing.", device_ids=[t.id for t in taper]))
@@ -56,7 +58,10 @@ def check(plan: TcpPlan, road: RoadContext) -> list[ComplianceIssue]:
 
     # Tangent spacing
     tangent = sorted((dv for dv in plan.devices if dv.group == "tangent"), key=lambda x: -dist_up(x.station_ft))
-    gaps = [abs(dist_up(a.station_ft) - dist_up(b.station_ft)) for a, b in zip(tangent, tangent[1:])]
+    # a gap left open for a driveway is intentional
+    dws = [dw.station_ft for dw in road.driveways]
+    gaps = [abs(dist_up(a.station_ft) - dist_up(b.station_ft)) for a, b in zip(tangent, tangent[1:])
+            if not any(min(a.station_ft, b.station_ft) < st < max(a.station_ft, b.station_ft) for st in dws)]
     if gaps and max(gaps) > dims.tangent_spacing_ft / TOL:
         out.append(ComplianceIssue(severity="warning", message=f"Tangent device gap of {max(gaps):.0f} ft exceeds {dims.tangent_spacing_ft:.0f} ft spacing."))
 

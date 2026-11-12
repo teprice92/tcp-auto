@@ -80,23 +80,39 @@ def school_text(d) -> str:
 
 
 def site_conditions(project: Project) -> list[tuple[str, str]]:
-    """Facts about the site a reviewer checks first: roadway, speed, intersections, school zone."""
+    """Facts about the site a reviewer checks first: roadway, intersections, school zone, access, pedestrians."""
     d, road, plan = project.details, project.road, project.plan
-    road_desc = f"{road.road_class.value.capitalize()} – {lane_config(road)}, {road.lane_width_ft:.0f} ft lanes"
+    road_desc = f"{road.road_class.value.capitalize()}, {road.speed_mph} mph" + ("" if road.speed_confirmed else " (from map data – confirm)")
+    road_desc += f" – {lane_config(road)}, {road.lane_width_ft:.0f} ft lanes"
     med = max((m.width_ft for m in road.median), default=0)
     if med > 0:
         road_desc += f"; median up to {med:.0f} ft"
-    rows = [("Roadway", road_desc),
-            ("Posted speed", f"{road.speed_mph} mph" + ("" if road.speed_confirmed else " (from map data – confirm in the field)"))]
+    rows = [("Roadway", road_desc)]
     st = [dv.station_ft for dv in plan.devices if dv.station_ft is not None]
     if st:
         lo, hi = min(st), max(st)
         ints = [i for i in road.intersections if lo <= i.station_ft <= hi]
         rows.append(("Intersections in zone", ", ".join(f"{i.cross_street or 'unnamed'}{' (signal)' if i.signalized else ''}" for i in ints) or "None"))
     rows.append(("School zone", school_text(d)))
+    rows.append(("Turn lanes & driveways", access_text(road, plan)))
     side = "closed (detour to the other side)" if d.pedestrian_detour else ("open" if road.has_sidewalk else "none")
     rows.append(("Sidewalk / bike lane", f"Sidewalk {side}" + ("; bike lane present" if road.has_bike_lane else "")))
     return rows
+
+
+def access_text(road, plan) -> str:
+    """One line on right-turn lanes and driveways near the work (names are listed on page 2)."""
+    parts = []
+    for z in plan.zones:
+        if z.kind == "turn_lane":
+            parts.append(z.label.replace("Right-turn lane to ", "Right-turn lane to ").replace(" (", ": ").rstrip(")"))
+    dws = [z for z in plan.zones if z.kind == "driveway"]
+    blocked = sum(len(r.text.split(": ", 1)[1].split(", ")) for r in plan.requirements if r.kind == "access" and r.text.startswith("Driveway blocked"))
+    if dws:
+        parts.append(f"{len(dws)} driveway{'s' if len(dws) != 1 else ''} in the zone" + (f", {blocked} blocked (owners notified)" if blocked else ", all kept open"))
+    if not parts:
+        return "None in the zone" if (road.turn_lanes or road.driveways) else "None entered"
+    return "; ".join(parts) + "."
 
 
 def provisions(project: Project) -> list[str]:
@@ -125,6 +141,7 @@ def provisions(project: Project) -> list[str]:
         out.append("Sidewalk remains open.")
     if road.intersections and any(dv.group == "cross_street" for dv in plan.devices):
         out.append("ROAD WORK AHEAD signs on cross-street approaches within the zone.")
+    out += [r.text for r in plan.requirements if r.kind == "access"]
     return out
 
 

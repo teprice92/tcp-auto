@@ -94,3 +94,32 @@ def test_center_turn_lane_from_osm():
     data["elements"][0]["tags"] = {"highway": "tertiary", "name": "N Oak St", "lanes": "3", "turn:lanes:both_ways": "left"}
     road, _ = parse_overpass(data, lat, -111.91)
     assert road.center_turn_lane and (road.lanes_forward, road.lanes_backward) == (1, 1)
+
+
+def test_turn_lane_and_driveways_from_osm():
+    """A right-turn-only lane on the last way before a cross street, and two service-road driveways."""
+    lat = 33.4215
+    g = lambda la, lo: {"lat": la, "lon": lo}
+    name = {"highway": "secondary", "name": "E University Dr", "lanes": "4"}
+    data = {"elements": [
+        {"type": "way", "id": 1, "nodes": [1, 2], "tags": name, "geometry": [g(lat, -111.920), g(lat, -111.910)]},
+        # eastbound right-turn lane on the 0.001 deg (~305 ft) way before S Mill Ave
+        {"type": "way", "id": 2, "nodes": [2, 3], "tags": {**name, "turn:lanes:forward": "through|through|right", "turn:lanes:backward": "left|through"},
+         "geometry": [g(lat, -111.910), g(lat, -111.909)]},
+        {"type": "way", "id": 3, "nodes": [3, 4], "tags": name, "geometry": [g(lat, -111.909), g(lat, -111.900)]},
+        {"type": "way", "id": 9, "nodes": [30, 3, 31], "tags": {"highway": "secondary", "name": "S Mill Ave"},
+         "geometry": [g(lat + 0.002, -111.909), g(lat, -111.909), g(lat - 0.002, -111.909)]},
+        {"type": "node", "id": 3, "lat": lat, "lon": -111.909, "tags": {"highway": "traffic_signals"}},
+        # driveways: one south (right of eastbound), one north; service roads are not intersections
+        {"type": "way", "id": 20, "nodes": [2, 50], "tags": {"highway": "service", "name": "Chevron"},
+         "geometry": [g(lat, -111.910), g(lat - 0.0003, -111.910)]},
+        {"type": "way", "id": 21, "nodes": [60, 2], "tags": {"highway": "service", "service": "driveway"},
+         "geometry": [g(lat + 0.0003, -111.9102), g(lat, -111.910)]},
+    ]}
+    road, _ = parse_overpass(data, lat, -111.912)
+    assert [i.cross_street for i in road.intersections] == ["S Mill Ave"]
+    assert len(road.turn_lanes) == 1
+    tl = road.turn_lanes[0]
+    assert tl.side == "right" and tl.cross_street == "S Mill Ave"
+    assert abs(abs(tl.end_station_ft - tl.start_station_ft) - 305) < 10 and tl.end_station_ft > tl.start_station_ft
+    assert sorted((d.side, d.name) for d in road.driveways) == [("left", ""), ("right", "Chevron")]

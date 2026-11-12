@@ -213,6 +213,10 @@ def generate(
     devices: list[Device] = []
 
     def add(dtype: DeviceType, station: float, offset: float, *, code=None, label="", group="", direction="forward", lights=None, rule_ref=None):
+        if dtype in OFF_ROAD:
+            if dtype == DeviceType.sign:
+                station = _clear_of_driveways(road, station, offset, direction)
+            offset = _past_turn_lanes(road, station, offset)
         p = cl.point(station, offset)
         bearing = cl.bearing_deg(station)
         if direction == "backward":
@@ -356,6 +360,12 @@ def generate(
         add(DeviceType.sign, dn(down_taper + A + B + C), opp_sign_off, code="W20-1", label="ROAD WORK AHEAD", group="advance_warning_opposing", direction=opposing_dir, lights=sign_lights)
         add(DeviceType.sign, up(u0 + 100), opp_sign_off, code=end_code, label="END ROAD WORK", group="termination", direction=opposing_dir)
 
+    # --- right-turn lanes and driveways ----------------------------------------------------------
+    access_zones, gaps = _access(road, details, g, template, d, ws, we, up(buf + taper), dn(down_taper), add, chan, chan_lights, reqs, issues, affected_dir)
+    # leave driveway mouths open: no channelizing devices across them
+    devices[:] = [dv for dv in devices if not (dv.type in (DeviceType.cone, DeviceType.drum) and dv.group in ("taper", "tangent", "termination")
+                                               and any(abs(dv.station_ft - st) < w / 2 for st, w in gaps))]
+
     # --- police officer ------------------------------------------------------------------------
     if police_required:
         if near_ints:
@@ -425,7 +435,7 @@ def generate(
     if twltl and not has_median:
         # the center turn lane itself (between the two directions' inside lane lines)
         roadway.append(Zone(kind="center_lane", polygon=cl.strip(r_lo, r_hi, -0.001, 0.001, 16), start_station_ft=r_lo, end_station_ft=r_hi, label="Two-way center turn lane"))
-    zones = roadway + [
+    zones = roadway + access_zones + [
         Zone(kind="work_area", polygon=cl.strip(min(ws, we), max(ws, we), work_lo, work_hi), start_station_ft=min(ws, we), end_station_ft=max(ws, we), label=f"Work area {work_len:.0f} ft"),
         Zone(kind="buffer", polygon=cl.strip(min(ws, up(buf)), max(ws, up(buf)), work_lo, work_hi, 4), start_station_ft=min(ws, up(buf)), end_station_ft=max(ws, up(buf)), label=f"Buffer {buf:.0f} ft"),
         Zone(kind="taper", polygon=[cl.point(up(buf + taper), taper_from), cl.point(up(buf), taper_to), cl.point(up(buf), taper_from)], start_station_ft=min(up(buf), up(buf + taper)), end_station_ft=max(up(buf), up(buf + taper)), label=f"Taper {taper:.0f} ft"),
@@ -443,6 +453,130 @@ def generate(
     plan = TcpPlan(template=template, devices=devices, zones=zones, dimensions=dims, requirements=reqs, issues=issues, night=night)
     plan.requirements.extend(_static_requirements(rules, template, road, details))
     return plan
+
+
+OFF_ROAD = {DeviceType.sign, DeviceType.flagger, DeviceType.police, DeviceType.light_tower, DeviceType.barricade3, DeviceType.cms}
+
+
+def road_edge(road: RoadContext, sgn: int) -> float:
+    """Signed lane-space offset of the outer edge of the through lanes on one side (+1 right, -1 left)."""
+    w = road.lane_width_ft
+    if road.one_way:
+        return sgn * (road.lanes_forward + road.lanes_backward) * w / 2
+    return road.lanes_forward * w if sgn > 0 else -road.lanes_backward * w
+
+
+def _tl(road: RoadContext, tl) -> tuple[int, float, float, float]:
+    """(side sign, low station, high station, width) of a turn lane."""
+    lo, hi = sorted((tl.start_station_ft, tl.end_station_ft))
+    return (1 if tl.side == "right" else -1), lo, hi, (tl.width_ft or road.lane_width_ft)
+
+
+def _past_turn_lanes(road: RoadContext, station: float, offset: float) -> float:
+    """Signs and other roadside devices beside a right-turn lane go outside it, not in it."""
+    for tl in road.turn_lanes:
+        s, lo, hi, w = _tl(road, tl)
+        edge = road_edge(road, s)
+        if lo <= station <= hi and offset * s >= abs(edge) - 0.01:
+            return offset + s * w
+    return offset
+
+
+def _clear_of_driveways(road: RoadContext, station: float, offset: float, direction: str) -> float:
+    """Move a sign upstream so it doesn't stand in a driveway mouth."""
+    for dw in road.driveways:
+        s = 1 if dw.side == "right" else -1
+        if offset * s > 0 and abs(station - dw.station_ft) < dw.width_ft / 2 + 8:
+            return dw.station_ft - (dw.width_ft / 2 + 12) * (1 if direction != "backward" else -1)
+    return station
+
+
+def _access(road, details, g, template, d, ws, we, taper_start, zone_end, add, chan, chan_lights, reqs, issues, affected_dir) -> tuple[list[Zone], list]:
+    """Right-turn lanes and driveways near the work: close or flag them, and describe them for the report.
+
+    Right-turn lanes follow ADOT SA-8 thinking: when a lane closure cuts off the entry to a right-turn
+    lane on the work side, the turn lane is closed too and right turns are prohibited (agency approval
+    and a detour); a turn lane starting just past the downstream taper is flagged. Driveways inside the
+    work area are blocked (notify, provide access); driveways elsewhere in the closure are kept open."""
+    cl = g.cl
+    zones: list[Zone] = []
+
+    def pos(st: float) -> float:  # ft downstream of the taper start, for the affected traffic
+        return (st - taper_start) * d
+
+    work_lo, work_hi = sorted((ws, we))
+    zone_lo, zone_hi = sorted((taper_start, zone_end))
+    work_end, end = pos(we), pos(zone_end)
+    for tl in road.turn_lanes:
+        s, lo, hi, w = _tl(road, tl)
+        edge = road_edge(road, s)
+        to = tl.cross_street or "the cross street"
+        status = ""
+        entry, exit_ = (lo, hi) if d == 1 else (hi, lo)
+        if s == g.sgn and pos(exit_) >= 0 and pos(entry) <= end + 150:
+            if template == "shoulder":
+                status = "stays open"
+                issues.append(ComplianceIssue(severity="warning", message=(
+                    f"Right-turn lane to {to} is beside the shoulder work. Keep the shoulder taper and devices out of the turn lane, "
+                    "and check the layout against ADOT SA-8.")))
+            elif pos(entry) <= work_end:
+                status = "closed"
+                s_close = entry if pos(entry) >= 0 else taper_start
+                for k in range(3):
+                    add(chan, s_close, edge + s * w * k / 2, label=f"Turn lane closed ({to})", group="turn_lane", direction=affected_dir, lights=chan_lights)
+                exit_st = hi if d == 1 else lo
+                add(DeviceType.sign, exit_st - d * 30, edge + s * 6, code="R3-1", label=f"NO RIGHT TURN (at {to})", group="turn_lane", direction=affected_dir)
+                reqs.append(Requirement(kind="access", text=f"Right-turn lane to {to} closed during work; right turns onto {to} detoured.",
+                                        citation="ADOT TTC Design Guidelines SA-8 (right turn lane, near side)"))
+                reqs.append(Requirement(kind="permit", text=f"Closing the right-turn lane to {to} prohibits right turns there: get the agency's approval and agree a detour route.",
+                                        verified=False))
+                issues.append(ComplianceIssue(severity="warning", message=(
+                    f"Right-turn lane to {to} starts inside the closed section, so it is closed too and right turns onto {to} are not possible. "
+                    "Get agency approval and plan a detour, or move the work to keep the turn lane open (ADOT SA-8).")))
+            elif pos(entry) <= end + 150:
+                status = "open (starts just past the closure)"
+                issues.append(ComplianceIssue(severity="warning", message=(
+                    f"Right-turn lane to {to} begins {max(0, pos(entry) - work_end):.0f} ft past the work area, inside or just after the downstream taper. "
+                    "Drivers returning to the lane will meet turning traffic: end the taper before it or close the turn lane (ADOT SA-8).")))
+            else:
+                status = "open"
+        if status or (zone_lo - 300 <= hi and lo <= zone_hi + 300):
+            zones.append(Zone(kind="turn_lane", polygon=cl.strip(lo, hi, edge, edge + s * w, 6), start_station_ft=lo, end_station_ft=hi,
+                              label=f"Right-turn lane to {to}" + (f" ({status})" if status else "")))
+            if status and status != "closed":
+                reqs.append(Requirement(kind="access", text=f"Right-turn lane to {to} {status}."))
+
+    blocked, kept, gaps = [], [], []
+    for dw in sorted(road.driveways, key=lambda x: x.station_ft):
+        s = 1 if dw.side == "right" else -1
+        edge = road_edge(road, s)
+        name = dw.name or "driveway"
+        if not (zone_lo - dw.width_ft / 2 <= dw.station_ft <= zone_hi + dw.width_ft / 2):
+            continue
+        zones.append(Zone(kind="driveway", polygon=cl.strip(dw.station_ft - dw.width_ft / 2, dw.station_ft + dw.width_ft / 2, edge, edge + s * 25, 3),
+                          start_station_ft=dw.station_ft - dw.width_ft / 2, end_station_ft=dw.station_ft + dw.width_ft / 2, label=name))
+        one_lane = template == "two_lane_flagger"
+        if s == g.sgn and work_lo - dw.width_ft / 2 <= dw.station_ft <= work_hi + dw.width_ft / 2:
+            blocked.append(name)
+            issues.append(ComplianceIssue(severity="warning", message=(
+                f"Driveway ({name}) is inside the work area and will be blocked. Notify the owner before work and keep another entrance open, "
+                "or stage the work to keep this one usable.")))
+            reqs.append(Requirement(kind="notice", text=f"Notify {name if dw.name else 'the property owner'} before work: the driveway at the work area is blocked; confirm another entrance stays open."))
+        elif s == g.sgn or one_lane:
+            kept.append(name)
+            if s == g.sgn and template != "shoulder":
+                gaps.append((dw.station_ft, dw.width_ft))
+            if one_lane:
+                msg = f"Driveway ({name}) is inside the one-lane section: flaggers must also hold traffic leaving it."
+            else:
+                msg = (f"Driveway ({name}) is inside the closed section (taper/buffer/downstream): keep it open and leave a gap in the "
+                       "channelizing devices so drivers can get in and out.")
+            issues.append(ComplianceIssue(severity="info", message=msg))
+    if blocked:
+        reqs.append(Requirement(kind="access", text="Driveway blocked by the work area (owner notified, other access kept open): " + ", ".join(blocked) + "."))
+    if kept:
+        reqs.append(Requirement(kind="access", text="Driveways in the closure kept open: " + ", ".join(kept) + "."))
+    return zones, gaps
 
 
 def lane_config(road: RoadContext) -> str:

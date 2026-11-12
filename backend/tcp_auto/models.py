@@ -113,6 +113,26 @@ class MedianPoint(BaseModel):
     width_ft: float
 
 
+Side = Literal["right", "left"]
+
+
+class TurnLane(BaseModel):
+    """An exclusive right-turn lane: an extra lane outside the curb lane for a stretch before an intersection."""
+    side: Side = "right"  # side of the road, relative to the centerline's forward direction
+    start_station_ft: float  # stations covered (either order); the lane ends at the intersection
+    end_station_ft: float
+    cross_street: str = ""
+    width_ft: Optional[float] = None  # default: the road's lane width
+
+
+class Driveway(BaseModel):
+    """A driveway / business entrance meeting the road."""
+    station_ft: float
+    side: Side = "right"
+    name: str = ""  # e.g. "Chevron", "Mesa High bus loop"
+    width_ft: float = 30.0
+
+
 class RoadContext(BaseModel):
     name: str = ""
     centerline: list[LatLon]  # ordered; "forward" = direction of increasing station
@@ -129,6 +149,8 @@ class RoadContext(BaseModel):
     has_sidewalk: bool = True
     intersections: list[Intersection] = Field(default_factory=list)
     median: list[MedianPoint] = Field(default_factory=list)  # empty = no median
+    turn_lanes: list[TurnLane] = Field(default_factory=list)  # right-turn lanes
+    driveways: list[Driveway] = Field(default_factory=list)
     sources: dict[str, str] = Field(default_factory=dict)
 
 
@@ -157,7 +179,6 @@ class Contacts(BaseModel):
 
 
 WorkPosition = Literal["shoulder", "lane"]
-Side = Literal["right", "left"]
 
 
 class NearbySchool(BaseModel):
@@ -229,7 +250,7 @@ class Device(BaseModel):
 
 
 class Zone(BaseModel):
-    kind: Literal["work_area", "buffer", "taper", "reduced_speed", "roadway", "center_lane"]
+    kind: Literal["work_area", "buffer", "taper", "reduced_speed", "roadway", "center_lane", "turn_lane", "driveway"]
     polygon: list[LatLon]
     start_station_ft: float
     end_station_ft: float
@@ -237,7 +258,7 @@ class Zone(BaseModel):
 
 
 class Requirement(BaseModel):
-    kind: Literal["police", "device", "personnel", "permit", "notice", "checklist"]
+    kind: Literal["police", "device", "personnel", "permit", "notice", "checklist", "access"]  # access: turn lanes / driveways
     text: str
     required: bool = True  # False = advisory ("may be required")
     verified: bool = True

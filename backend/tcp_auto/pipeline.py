@@ -45,6 +45,7 @@ def build_plan(project: Project) -> tuple[TcpPlan, ResolvedRules, TimelineResult
 def recheck(project: Project) -> TcpPlan:
     """Re-run compliance after edits, keeping generation-time issues that don't depend on positions."""
     plan = project.plan
-    keep = [i for i in plan.issues if i.severity == "info" or "Phase" in i.message or "speed" in i.message.lower() and "confirmed" in i.message or "Intersection" in i.message or "one-way" in i.message]
+    keep = [i for i in plan.issues if i.severity == "info" or "Phase" in i.message or "speed" in i.message.lower() and "confirmed" in i.message or "Intersection" in i.message or "one-way" in i.message
+            or "turn lane" in i.message or "Driveway" in i.message]
     plan.issues = keep + check(plan, project.road)
     return plan

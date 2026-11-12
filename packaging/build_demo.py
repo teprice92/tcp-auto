@@ -52,7 +52,14 @@ def road(key: str, **attrs) -> dict:
               for m in r.get("carriageway_separation", [])]
     if attrs.get("center_turn_lane"):
         median = []  # center-turn-lane road; the short raised-median sections at the far ends are outside the plan
-    return {"name": r["name"], "centerline": r["centerline"], "intersections": ints, "speed_confirmed": True,
+    # driveways (side relative to the drawn direction) and right-turn lanes ending at an intersection
+    dws = [{"station_ft": round(cl.project(LatLon(**dw["at"]))[0], 1), "side": dw["side"], "name": dw["name"]} for dw in r.get("driveways", [])]
+    tls = []
+    for t in r.get("turn_lanes", []):
+        end = next(i["station_ft"] for i in ints if i["cross_street"] == t["cross_street"])
+        start = end - t["length_ft"] if t["side"] == "right" else end + t["length_ft"]  # approach from upstream of the intersection
+        tls.append({"side": t["side"], "start_station_ft": start, "end_station_ft": end, "cross_street": t["cross_street"]})
+    return {"name": r["name"], "centerline": r["centerline"], "intersections": ints, "speed_confirmed": True, "driveways": dws, "turn_lanes": tls,
             "median": median, "divided": any(m["width_ft"] > 0 for m in median), "sources": {"centerline": "osm"}, **attrs}
 
 
@@ -84,7 +91,7 @@ SAMPLES = [
          details={"city": "Tempe", "work_position": "lane", "phases": phases("2026-12-01", "2026-12-02"), "contacts": CONTACTS, "permit_number": "ROW-DEMO-001"},
          road=lambda: road("university_dr_tempe", speed_mph=40, lanes_forward=2, lanes_backward=2, road_class="arterial"),
          center=lambda: along("university_dr_tempe", "S Rural Rd", 300)),
-    dict(name="Demo 2 – Near a signal, police required (Gilbert)", drawing=False,
+    dict(name="Demo 2 – Near a signal, right-turn lane and business driveways (Gilbert)", drawing=False,
          details={"city": "Gilbert", "address": "E Guadalupe Rd west of N Gilbert Rd", "description": "replace a pad-mount transformer", "work_position": "lane",
                   "phases": phases("2026-12-03", "2026-12-04"), "contacts": CONTACTS, "permit_number": "TRF-DEMO-002", "job_number": "WO-DEMO-2"},
          road=lambda: road("guadalupe_rd_gilbert", speed_mph=45, lanes_forward=2, lanes_backward=2, road_class="arterial"),
