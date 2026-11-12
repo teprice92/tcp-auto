@@ -26,7 +26,7 @@
   .banner.police { background: var(--blue-100); border: 1px solid var(--blue); color: var(--navy); }
   .banner.warn { background: #fff4e5; border: 1px solid var(--orange); color: #7a3300; font-weight: normal; }
   .map { border: 1px solid var(--line); }
-  .map svg { display:block; width:100%; height:auto; max-height:3.7in; }
+  .map svg { display:block; width:100%; height:auto; max-height:3.4in; }
   .tl svg { display:block; width:100%; height:auto; max-height:1.1in; }
   .grid { display: grid; grid-template-columns: 1.25fr 1fr; gap: 14px; margin-top: 4px; }
   .page1 h2 { margin-top: 4px; }
@@ -44,6 +44,8 @@
   .tag { display: inline-block; font-size: 9px; padding: 0 4px; border-radius: 3px; background: #fde68a; color: #6b4b00; }
   .cols3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
   ul.prov { margin: 0; padding-left: 16px; } ul.prov li { margin: 2px 0; }
+  table.site td { padding: 2px 4px; }
+  table.site td:first-child { width: 34%; color: var(--muted); }
   footer { margin-top: 8px; font-size: 9px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 4px; }
 </style>
 </head>
@@ -84,6 +86,10 @@
     <div>
       <h2>What is happening</h2>
       {% for para in explanation %}<p>{{ para }}</p>{% endfor %}
+      <h2>Site conditions</h2>
+      <table class="t site">
+        {% for k, v in site %}<tr><td>{{ k }}</td><td>{{ v }}</td></tr>{% endfor %}
+      </table>
     </div>
     <div>
       <h2>Timeline</h2>
@@ -127,7 +133,7 @@
         <tr><td>Downstream taper</td><td>{{ dims.downstream_taper_ft | round | int }} ft</td></tr>
         <tr><td>Sign spacing A / B / C</td><td>{{ dims.sign_spacing_ft.A | int }} / {{ dims.sign_spacing_ft.B | int }} / {{ dims.sign_spacing_ft.C | int }} ft</td></tr>
         <tr><td>Device spacing</td><td>{{ dims.taper_spacing_ft | int }} ft taper / {{ dims.tangent_spacing_ft | int }} ft tangent</td></tr>
-        <tr><td>Lanes</td><td>{{ road.lanes_forward }} + {{ road.lanes_backward }} × {{ road.lane_width_ft | int }} ft{% if road.one_way %} (one-way){% endif %}</td></tr>
+        <tr><td>Lanes</td><td>{{ lane_text }}, {{ road.lane_width_ft | int }} ft wide</td></tr>
       </table>
       <h2>Device quantities</h2>
       <table class="t">

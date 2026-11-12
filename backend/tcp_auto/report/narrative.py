@@ -68,6 +68,13 @@ def explain(project: Project, plan: TcpPlan) -> list[str]:
             f"{bound.capitalize()} traffic will merge {other} using a {dims.taper_ft:.0f} ft taper, followed by a "
             f"{dims.buffer_ft:.0f} ft buffer space before the work area. Other lanes stay open."
         )
+    elif plan.template == "lane_shift_twltl":
+        closure = f"the {bound} lane of {where} will be closed for {dims.work_area_ft:.0f} ft"
+        flow = (
+            f"{bound.capitalize()} traffic will shift into the center turn lane using a {dims.taper_ft:.0f} ft shifting taper, "
+            f"followed by a {dims.buffer_ft:.0f} ft buffer space; devices along the center turn lane keep it separate from opposing "
+            "traffic, and left turns from the center lane are not available next to the work area. Both directions stay open."
+        )
     else:
         closure = f"the {bound} lane of {where} will be closed for {dims.work_area_ft:.0f} ft"
         flow = (

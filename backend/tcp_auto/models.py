@@ -123,6 +123,7 @@ class RoadContext(BaseModel):
     lane_width_ft: float = 12.0
     one_way: bool = False
     divided: bool = False
+    center_turn_lane: bool = False  # two-way left-turn lane between the directions (one lane wide)
     road_class: RoadClass = RoadClass.collector
     has_bike_lane: bool = False
     has_sidewalk: bool = True
@@ -159,6 +160,13 @@ WorkPosition = Literal["shoulder", "lane"]
 Side = Literal["right", "left"]
 
 
+class NearbySchool(BaseModel):
+    name: str = "School"
+    distance_ft: int
+    lat: Optional[float] = None
+    lon: Optional[float] = None
+
+
 class ProjectDetails(BaseModel):
     project_name: str = ""
     job_number: str = ""
@@ -176,6 +184,8 @@ class ProjectDetails(BaseModel):
     police_requested: bool = False
     reduced_speed_requested: bool = False
     school_zone: bool = False
+    nearby_school: Optional[NearbySchool] = None  # nearest school from the map lookup
+    school_checked: bool = False  # a map lookup for schools ran (so "none found" is meaningful)
     near_residential: bool = True
     pedestrian_detour: bool = False
     phases: list[Phase] = Field(default_factory=list)
@@ -219,7 +229,7 @@ class Device(BaseModel):
 
 
 class Zone(BaseModel):
-    kind: Literal["work_area", "buffer", "taper", "reduced_speed", "roadway"]
+    kind: Literal["work_area", "buffer", "taper", "reduced_speed", "roadway", "center_lane"]
     polygon: list[LatLon]
     start_station_ft: float
     end_station_ft: float

@@ -82,3 +82,15 @@ def test_pairs_divided_road_carriageways():
     assert plan.template == "lane_closure_multilane"
     work = [z for z in plan.zones if z.kind == "work_area"][0]
     assert all(pt.lat < lat - d / 3 for pt in work.polygon), "work area should sit on the south (eastbound) roadway"
+
+
+def test_center_turn_lane_from_osm():
+    lat = 33.4215
+    g = lambda lon: {"lat": lat, "lon": lon}
+    data = {"elements": [{"type": "way", "id": 1, "nodes": [1, 2], "geometry": [g(-111.92), g(-111.905)],
+                          "tags": {"highway": "secondary", "name": "E Baseline Rd", "lanes": "7", "lanes:both_ways": "1"}}]}
+    road, _ = parse_overpass(data, lat, -111.91)
+    assert road.center_turn_lane and (road.lanes_forward, road.lanes_backward) == (3, 3)
+    data["elements"][0]["tags"] = {"highway": "tertiary", "name": "N Oak St", "lanes": "3", "turn:lanes:both_ways": "left"}
+    road, _ = parse_overpass(data, lat, -111.91)
+    assert road.center_turn_lane and (road.lanes_forward, road.lanes_backward) == (1, 1)

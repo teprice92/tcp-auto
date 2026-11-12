@@ -136,3 +136,51 @@ def test_divided_road_follows_carriageway(make_project):
     def max_off(plan):
         return max(dist(cl, d) for d in plan.devices if d.type == DeviceType.cone)
     assert max_off(divided) > max_off(plain) + 15
+
+
+def test_center_turn_lane_shift(make_project):
+    """1 + center turn lane + 1: traffic shifts into the center lane (no flaggers), with a shifting taper."""
+    from tcp_auto.geo import Centerline
+    from tcp_auto.models import LatLon
+
+    p = make_project(road_kw=dict(lanes_forward=1, lanes_backward=1, center_turn_lane=True, speed_mph=35, road_class="collector"))
+    plan, _, _ = build_plan(p)
+    assert plan.template == "lane_shift_twltl"
+    assert plan.dimensions.taper_ft == round(0.5 * 12 * 35 * 35 / 60)  # 0.5 L
+    assert not any(d.type == DeviceType.flagger for d in plan.devices)
+    codes = [d.code for d in plan.devices if d.group == "advance_warning"]
+    assert codes == ["W1-4L", "W20-5R", "W20-1"]
+    assert any(z.kind == "center_lane" for z in plan.zones)
+    cl = Centerline.for_road(p.road)
+    # taper ends at the closed lane's inside line (6 ft right of center = center-lane edge), not mid center lane
+    last = min((d for d in plan.devices if d.group == "taper"), key=lambda d: abs(d.station_ft - plan.dimensions.work_start_station_ft))
+    x0, y0 = cl.point_xy(last.station_ft, 0)
+    x1, y1 = cl.frame.to_xy(LatLon(lat=last.lat, lon=last.lon))
+    assert abs(((x1 - x0) ** 2 + (y1 - y0) ** 2) ** 0.5 - 6) < 0.5
+    # center-lane separation devices sit on the opposing edge of the center lane
+    sep = [d for d in plan.devices if d.group == "centerline"]
+    assert len(sep) >= 5
+    x2, y2 = cl.frame.to_xy(LatLon(lat=sep[2].lat, lon=sep[2].lon))
+    x3, y3 = cl.point_xy(sep[2].station_ft, 0)
+    assert abs(((x2 - x3) ** 2 + (y2 - y3) ** 2) ** 0.5 - 6) < 0.5
+    assert not [i for i in plan.issues if i.severity == "error"], plan.issues
+
+
+def test_three_plus_one_plus_three(make_project):
+    """3 + center turn lane + 3 (7 lanes): curb lane closure, lanes pushed out past the center lane."""
+    from tcp_auto.layout.generator import lane_config
+
+    p = make_project(road_kw=dict(lanes_forward=3, lanes_backward=3, center_turn_lane=True, speed_mph=45))
+    assert lane_config(p.road) == "7-lane road: 3 lanes each way + center turn lane"
+    plan, _, _ = build_plan(p)
+    assert plan.template == "lane_closure_multilane"
+    work = next(z for z in plan.zones if z.kind == "work_area")
+    from tcp_auto.geo import Centerline
+
+    cl = Centerline.for_road(p.road)
+    offs = sorted(cl.project(q)[1] for q in work.polygon)
+    assert abs(offs[0] - 24) < 0.5 and abs(offs[-1] - 36) < 0.5  # third lane, measured from the center-lane edge
+    x0, y0 = cl.point_xy(plan.dimensions.work_start_station_ft, 0)
+    x1, y1 = cl.point_xy(plan.dimensions.work_start_station_ft, 36)
+    assert abs(((x1 - x0) ** 2 + (y1 - y0) ** 2) ** 0.5 - 42) < 0.5  # 6 ft half center lane + 3 x 12 ft
+    assert not [i for i in plan.issues if i.severity == "error"], plan.issues

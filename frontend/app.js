@@ -220,7 +220,7 @@ function esc(s) { return String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;
 function drawPlan(fit = false) {
   layers.zones.clearLayers(); layers.devices.clearLayers(); markers = {};
   const plan = state.project && state.project.plan; if (!plan) return;
-  const styles = { roadway: { color: "#475467", weight: 1, fillColor: "#98a2b3", fillOpacity: .35, interactive: false }, work_area: { color: "#c05800", fillColor: "#f07c1b", fillOpacity: .35, weight: 1 }, buffer: { color: "#999", fillOpacity: .1, weight: 1, dashArray: "4" }, taper: { color: "#f07c1b", fillOpacity: .15, weight: 1 }, reduced_speed: { color: "#1d4ed8", fillOpacity: .04, weight: 1, dashArray: "6" } };
+  const styles = { roadway: { color: "#475467", weight: 1, fillColor: "#98a2b3", fillOpacity: .35, interactive: false }, work_area: { color: "#c05800", fillColor: "#f07c1b", fillOpacity: .35, weight: 1 }, buffer: { color: "#999", fillOpacity: .1, weight: 1, dashArray: "4" }, taper: { color: "#f07c1b", fillOpacity: .15, weight: 1 }, reduced_speed: { color: "#1d4ed8", fillOpacity: .04, weight: 1, dashArray: "6" }, center_lane: { color: "#d4a20b", weight: 1.5, dashArray: "8 6", fillColor: "#98a2b3", fillOpacity: .35, interactive: false } };
   plan.zones.forEach(z => L.polygon(z.polygon.map(q => [q.lat, q.lon]), styles[z.kind] || {}).addTo(layers.zones).bindTooltip(z.label));
   plan.devices.forEach(dv => {
     const m = L.marker([dv.lat, dv.lon], { icon: iconFor(dv), draggable: true, title: `${dv.label || dv.type}${dv.code ? " (" + dv.code + ")" : ""}` });
@@ -273,7 +273,7 @@ function renderIssues() {
     rq.appendChild(li);
   });
   const d = plan.dimensions;
-  const tpl = { shoulder: "Shoulder work", two_lane_flagger: "Two-lane, flaggers", lane_closure_multilane: "Multi-lane closure" }[d.template] || d.template;
+  const tpl = { shoulder: "Shoulder work", two_lane_flagger: "Two-lane, flaggers", lane_closure_multilane: "Multi-lane closure", lane_shift_twltl: "Shift into center turn lane" }[d.template] || d.template;
   const cell = (v, k) => `<div><b>${v}</b><span>${k}</span></div>`;
   $("#dims").innerHTML = [
     cell(esc(tpl), "layout"), cell(`${d.speed_mph} mph`, "posted speed"), cell(`${Math.round(d.work_area_ft)} ft`, "work area"),
@@ -524,6 +524,10 @@ async function init() {
     status("Looking up road…");
     const r = await api(`/api/road/lookup?lat=${c.lat}&lon=${c.lon}`);
     await save({ road: r.road });
+    { // remember the school check so the report can say "no school nearby (map check)"
+      const d = state.project.details; d.school_checked = true; d.nearby_school = (r.schools && r.schools[0]) || null;
+      await save({ details: d });
+    }
     if (r.schools && r.schools.length && r.schools[0].distance_ft < 600 && !state.project.details.school_zone) {
       const v = await ask("School nearby", `<p>${esc(r.schools[0].name)} is about ${r.schools[0].distance_ft} ft away. School zones require a police officer.</p><label class="c"><input type="checkbox" name="yes" checked> Mark this job as in a school zone</label>`, "Save");
       if (v && v.yes) {

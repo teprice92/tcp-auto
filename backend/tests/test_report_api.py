@@ -105,3 +105,27 @@ def test_pdf_render(make_project):
     p.plan, _, _ = build_plan(p)
     pdf = render_pdf(p)
     assert pdf.startswith(b"%PDF") and len(pdf) > 10000
+
+
+def test_report_site_conditions_school_and_lanes():
+    import re
+
+    from conftest import project
+    from tcp_auto.models import NearbySchool
+    from tcp_auto.pipeline import build_plan
+    from tcp_auto.report.render import render_html, school_text
+
+    p = project(city="Gilbert", school_zone=True, road_kw=dict(lanes_forward=3, lanes_backward=3, center_turn_lane=True))
+    p.details.nearby_school = NearbySchool(name="Test Elementary", distance_ft=420, lat=33.4222, lon=-111.9125)
+    p.plan, _, _ = build_plan(p)
+    text = " ".join(re.sub(r"<[^>]+>", " ", render_html(p)).split())
+    assert "Site conditions" in text
+    assert "7-lane road: 3 lanes each way + center turn lane" in text
+    assert "School zone Yes – Test Elementary, about 420 ft away" in text
+    assert "SCHOOL ZONE · Test Elementary, north side" in text  # plan-view marker, on the correct side
+
+    d = p.details
+    d.school_zone, d.nearby_school, d.school_checked = False, None, True
+    assert school_text(d).startswith("No – no school found")
+    d.school_checked = False
+    assert school_text(d) == "No (per preparer; not map-checked)"

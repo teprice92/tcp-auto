@@ -14,6 +14,7 @@ from ..compliance.checks import device_counts
 from ..models import Project
 from ..pipeline import timeline_for
 from ..rules.engine import resolve
+from ..layout.generator import lane_config
 from .narrative import explain
 from .pdf import html_to_pdf  # noqa: F401  (re-exported)
 from .svgmap import render_plan_svg, render_timeline_svg
@@ -24,6 +25,7 @@ TEMPLATE_LABELS = {
     "shoulder": "Shoulder work (MUTCD TA-6 style)",
     "two_lane_flagger": "Lane closure, two-lane road, flaggers (MUTCD TA-10 style)",
     "lane_closure_multilane": "Lane closure, multi-lane road (MUTCD TA-30/33 style)",
+    "lane_shift_twltl": "Lane closure with shift into the center turn lane (MUTCD 6C shifting taper)",
 }
 OWNER_LABELS = {"city": "City/Town", "county": "County", "ADOT": "ADOT (state highway)", "tribal": "Tribal", "unknown": "Unknown"}
 
@@ -54,12 +56,47 @@ def render_html(project: Project) -> str:
         provisions=provisions(project),
         standards=standards(rules),
         counts=device_counts(plan),
+        site=site_conditions(project),
+        lane_text=lane_config(project.road),
         template_label=TEMPLATE_LABELS.get(plan.template, plan.template),
         owner_label=OWNER_LABELS.get(d.road_owner, d.road_owner),
         today=date.today().strftime("%b %d, %Y"),
         version=__version__,
         logo=LOGO_SVG,
     )
+
+
+def school_text(d) -> str:
+    """School zone status in plain words, saying how it was determined."""
+    sch = d.nearby_school
+    where = f"{sch.name}, about {sch.distance_ft:,} ft away" if sch else ""
+    if d.school_zone:
+        return f"Yes – {where}" if sch else "Yes (per preparer)"
+    if sch:
+        return f"No – nearest school is {where} (map check)"
+    if d.school_checked:
+        return "No – no school found within about 800 ft (map check)"
+    return "No (per preparer; not map-checked)"
+
+
+def site_conditions(project: Project) -> list[tuple[str, str]]:
+    """Facts about the site a reviewer checks first: roadway, speed, intersections, school zone."""
+    d, road, plan = project.details, project.road, project.plan
+    road_desc = f"{road.road_class.value.capitalize()} – {lane_config(road)}, {road.lane_width_ft:.0f} ft lanes"
+    med = max((m.width_ft for m in road.median), default=0)
+    if med > 0:
+        road_desc += f"; median up to {med:.0f} ft"
+    rows = [("Roadway", road_desc),
+            ("Posted speed", f"{road.speed_mph} mph" + ("" if road.speed_confirmed else " (from map data – confirm in the field)"))]
+    st = [dv.station_ft for dv in plan.devices if dv.station_ft is not None]
+    if st:
+        lo, hi = min(st), max(st)
+        ints = [i for i in road.intersections if lo <= i.station_ft <= hi]
+        rows.append(("Intersections in zone", ", ".join(f"{i.cross_street or 'unnamed'}{' (signal)' if i.signalized else ''}" for i in ints) or "None"))
+    rows.append(("School zone", school_text(d)))
+    side = "closed (detour to the other side)" if d.pedestrian_detour else ("open" if road.has_sidewalk else "none")
+    rows.append(("Sidewalk / bike lane", f"Sidewalk {side}" + ("; bike lane present" if road.has_bike_lane else "")))
+    return rows
 
 
 def provisions(project: Project) -> list[str]:

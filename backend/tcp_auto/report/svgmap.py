@@ -10,7 +10,7 @@ from __future__ import annotations
 import html
 import math
 
-from ..geo import Centerline
+from ..geo import Centerline, center_lane_width
 from ..models import DeviceType, LatLon, ProjectDetails, RoadContext, TcpPlan
 
 W, H = 1000, 370
@@ -25,8 +25,10 @@ def _esc(s: str) -> str:
 
 def render_plan_svg(plan: TcpPlan, road: RoadContext, details: ProjectDetails) -> str:
     cl = Centerline.for_road(road)
+    raw: dict[str, tuple[float, float]] = {}  # unrounded, so devices on a center-lane edge keep their side
     for dv in plan.devices:
-        dv.station_ft, dv.offset_ft = (round(v, 1) for v in cl.project(LatLon(lat=dv.lat, lon=dv.lon)))
+        raw[dv.id] = cl.project(LatLon(lat=dv.lat, lon=dv.lon))
+        dv.station_ft, dv.offset_ft = (round(v, 1) for v in raw[dv.id])
     stations = [dv.station_ft for dv in plan.devices] + [plan.dimensions.work_start_station_ft, plan.dimensions.work_end_station_ft]
     s_min, s_max = min(stations) - 60, max(stations) + 60
     sx = (W - 2 * MARGIN_X) / max(1.0, s_max - s_min)
@@ -37,14 +39,15 @@ def render_plan_svg(plan: TcpPlan, road: RoadContext, details: ProjectDetails) -
         left_edge, right_edge = -n * w / 2, n * w / 2
     else:
         left_edge, right_edge = -road.lanes_backward * w, road.lanes_forward * w
-    road_w = right_edge - left_edge
+    half_c = center_lane_width(road) / 2  # center turn lane: offsets are measured from its edges
+    road_w = right_edge - left_edge + 2 * half_c
     sy = 130.0 / max(road_w, 24.0)  # lateral exaggeration: road band ~130 px
 
     def X(st: float) -> float:
         return MARGIN_X + (st - s_min) * sx
 
     def Y(off: float) -> float:
-        return ROAD_Y + off * sy
+        return ROAD_Y + (off + math.copysign(half_c, off) if off else off) * sy
 
     out: list[str] = [
         f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="100%" font-family="Arial, Helvetica, sans-serif">',
@@ -58,10 +61,20 @@ def render_plan_svg(plan: TcpPlan, road: RoadContext, details: ProjectDetails) -
     # Sidewalk/shoulder strips and road
     out.append(f'<rect x="{MARGIN_X - 20}" y="{Y(left_edge) - 26:.1f}" width="{W - 2 * MARGIN_X + 40}" height="{road_w * sy + 52:.1f}" fill="#e3e8ee"/>')
     out.append(f'<rect x="{MARGIN_X - 20}" y="{Y(left_edge):.1f}" width="{W - 2 * MARGIN_X + 40}" height="{road_w * sy:.1f}" fill="#6b6f74"/>')
-    lanes_total = int(round(road_w / w))
+    lanes_total = int(round((right_edge - left_edge) / w))
+    x0, x1 = MARGIN_X - 20, W - MARGIN_X + 20
     for k in range(1, lanes_total):
         off = left_edge + k * w
-        if not road.one_way and abs(off) < 0.1:
+        if not road.one_way and abs(off) < 0.1 and half_c:
+            # two-way left-turn lane: solid outer + dashed inner yellow lines each side, and turn arrows
+            for sgn in (-1, 1):
+                yo, yi = ROAD_Y + sgn * (half_c * sy - 2), ROAD_Y + sgn * (half_c * sy - 6)
+                out.append(f'<line x1="{x0}" y1="{yo:.1f}" x2="{x1}" y2="{yo:.1f}" stroke="#f2c230" stroke-width="2"/>')
+                out.append(f'<line x1="{x0}" y1="{yi:.1f}" x2="{x1}" y2="{yi:.1f}" stroke="#f2c230" stroke-width="2" stroke-dasharray="14 10"/>')
+            for xa in range(int(x0) + 170, int(x1) - 60, 260):
+                out.append(_turn_arrows(xa, ROAD_Y))
+            out.append(f'<text x="{x0 + 8}" y="{ROAD_Y + 3.5:.1f}" font-size="9" fill="#e6e8eb">CENTER TURN LANE</text>')
+        elif not road.one_way and abs(off) < 0.1:
             out.append(f'<line x1="{MARGIN_X - 20}" y1="{Y(0) - 2:.1f}" x2="{W - MARGIN_X + 20}" y2="{Y(0) - 2:.1f}" stroke="#f2c230" stroke-width="2"/>')
             out.append(f'<line x1="{MARGIN_X - 20}" y1="{Y(0) + 2:.1f}" x2="{W - MARGIN_X + 20}" y2="{Y(0) + 2:.1f}" stroke="#f2c230" stroke-width="2"/>')
         else:
@@ -98,7 +111,7 @@ def render_plan_svg(plan: TcpPlan, road: RoadContext, details: ProjectDetails) -
     # Devices
     label_rows: dict[int, float] = {}
     for dv in sorted(plan.devices, key=lambda d: d.station_ft or 0):
-        x, y = X(dv.station_ft), Y(dv.offset_ft)
+        x, y = X(raw[dv.id][0]), Y(raw[dv.id][1])
         t = dv.type
         if t == DeviceType.cone:
             out.append(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="3.2" fill="#f36f21" stroke="#7a2e00" stroke-width="0.6"/>')
@@ -155,6 +168,18 @@ def render_plan_svg(plan: TcpPlan, road: RoadContext, details: ProjectDetails) -
     for ix in road.intersections:
         if s_min - 40 <= ix.station_ft <= s_max + 40:
             out.append(_intersection_label(X(ix.station_ft), max(40.0, 64 * sx), ix.cross_street, ix.signalized))
+
+    # School: marker at the school's station (or at the map edge, pointing toward it)
+    sch = details.nearby_school
+    if sch and sch.lat is not None and (details.school_zone or sch.distance_ft <= 1500):
+        st, off = cl.project(LatLon(lat=sch.lat, lon=sch.lon))
+        fwd = cl.bearing_deg(min(max(st, 0), cl.length))
+        side = ["north", "east", "south", "west"][int(((fwd + (90 if off > 0 else -90)) % 360 + 45) % 360 // 90)]
+        xs = X(min(max(st, s_min), s_max))
+        edge = "" if s_min <= st <= s_max else (" (beyond map ←)" if st < s_min else " (beyond map →)")
+        out.append(_school_marker(min(max(xs, 16), W - 16), 46, f"{sch.name}, {side} side, ~{sch.distance_ft:,} ft{edge}", details.school_zone))
+    elif details.school_zone:
+        out.append(_school_marker(MARGIN_X + 10, 46, "location not mapped", True))
 
     # North arrow and scale bar
     rot = 90 - cl.bearing_deg((dims.work_start_station_ft + dims.work_end_station_ft) / 2)
@@ -214,6 +239,24 @@ def _intersection_label(x: float, width: float, name: str, signalized: bool) -> 
     lx = max(4.0, lx)
     return (f'<rect x="{lx:.1f}" y="6" width="{tw:.1f}" height="20" rx="10" fill="#1a365d"/>'
             f'<text x="{lx + tw / 2:.1f}" y="20" font-size="11.5" font-weight="bold" fill="#fff" text-anchor="middle">{label}</text>')
+
+
+def _turn_arrows(x: float, y: float) -> str:
+    """Opposing left-turn arrow pair painted in a two-way left-turn lane."""
+    return (f'<g fill="none" stroke="#fff" stroke-width="1.6" opacity="0.9">'
+            f'<path d="M{x - 18:.1f},{y + 3:.1f} h12 v-6 m-3,3 l3,-3 l3,3"/>'
+            f'<path d="M{x + 18:.1f},{y - 3:.1f} h-12 v6 m3,-3 l-3,3 l-3,-3"/></g>')
+
+
+def _school_marker(x: float, y: float, text: str, zone: bool) -> str:
+    """School sign shape (pentagon, fluorescent yellow-green) with a label."""
+    pts = f"{x:.1f},{y - 11:.1f} {x + 9:.1f},{y - 3:.1f} {x + 9:.1f},{y + 9:.1f} {x - 9:.1f},{y + 9:.1f} {x - 9:.1f},{y - 3:.1f}"
+    label = ("SCHOOL ZONE · " if zone else "School · ") + _esc(text)
+    tw = 6.1 * len(("SCHOOL ZONE · " if zone else "School · ") + text) + 14
+    lx = min(max(x + 14, 4), W - tw - 4)
+    return (f'<polygon points="{pts}" fill="#c6e03a" stroke="#1f2328" stroke-width="1.2"/>'
+            f'<rect x="{lx:.1f}" y="{y - 9:.1f}" width="{tw:.1f}" height="18" rx="9" fill="#ffffff" stroke="{"#5b7f00" if zone else "#9aa4b2"}" stroke-width="1.2"/>'
+            f'<text x="{lx + 7:.1f}" y="{y + 4:.1f}" font-size="10.5" font-weight="bold" fill="#2c3a00">{label}</text>')
 
 
 def _arrow(x: float, y: float, d: int) -> str:

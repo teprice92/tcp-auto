@@ -53,7 +53,13 @@ class Centerline:
 
     @classmethod
     def for_road(cls, road) -> "Centerline":
-        return cls(road.centerline, median=[(m.station_ft, m.width_ft) for m in getattr(road, "median", []) or []])
+        """Centerline for a road: the space between the two directions (median plus any center
+        turn lane) pushes each direction's lanes outward."""
+        median = [(m.station_ft, m.width_ft) for m in getattr(road, "median", []) or []]
+        twltl = center_lane_width(road)
+        if twltl:
+            median = [(s, w + twltl) for s, w in median] or [(0.0, twltl)]
+        return cls(road.centerline, median=median)
 
     def median_half(self, station: float) -> float:
         """Half the median width (ft) at a station (linear between profile points, flat past the ends)."""
@@ -144,6 +150,13 @@ class Centerline:
         fwd = [self.point(s0 + (s1 - s0) * k / (n - 1), off0) for k in range(n)]
         back = [self.point(s1 - (s1 - s0) * k / (n - 1), off1) for k in range(n)]
         return fwd + back
+
+
+def center_lane_width(road) -> float:
+    """Width of a two-way center turn lane (0 if none, or on a one-way street)."""
+    if getattr(road, "center_turn_lane", False) and not getattr(road, "one_way", False):
+        return float(road.lane_width_ft)
+    return 0.0
 
 
 def haversine_ft(a: LatLon, b: LatLon) -> float:

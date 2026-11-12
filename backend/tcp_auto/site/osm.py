@@ -212,11 +212,14 @@ def parse_overpass(data: dict, lat: float, lon: float) -> tuple[RoadContext, dic
     lanes = _lanes(tags) or (1 if one_way else 2)
     lf = int(tags.get("lanes:forward", 0) or 0)
     lb = int(tags.get("lanes:backward", 0) or 0)
+    # two-way left-turn lane: OSM tags it lanes:both_ways (and counts it in "lanes")
+    center = not one_way and (int(re.sub(r"\D", "", tags.get("lanes:both_ways", "")) or 0) > 0 or "left" in tags.get("turn:lanes:both_ways", ""))
     if one_way:
         lf, lb = lanes, 0
     elif not (lf and lb):
-        lf = max(1, lanes // 2)
-        lb = max(1, lanes - lf)
+        through = max(2, lanes - (1 if center else 0))
+        lf = max(1, through // 2)
+        lb = max(1, through - lf)
     speed = _speed(tags)
     sources = {"centerline": "osm", "lanes": "osm" if "lanes" in tags else "rule_default", "road_class": "osm", "speed_mph": "osm" if speed else "rule_default"}
 
@@ -290,10 +293,11 @@ def parse_overpass(data: dict, lat: float, lon: float) -> tuple[RoadContext, dic
         if e.get("tags", {}).get("amenity") == "school":
             c = e.get("center") or ({"lat": e.get("lat"), "lon": e.get("lon")} if e.get("lat") else None)
             if c:
-                schools.append({"name": e["tags"].get("name", "School"), "distance_ft": round(haversine_ft(here, LatLon(lat=c["lat"], lon=c["lon"])))})
+                schools.append({"name": e["tags"].get("name", "School"), "distance_ft": round(haversine_ft(here, LatLon(lat=c["lat"], lon=c["lon"]))),
+                                "lat": c["lat"], "lon": c["lon"]})
     road = RoadContext(
         name=tags.get("name", ""), centerline=pts, speed_mph=speed or DEFAULT_SPEED[rclass], speed_confirmed=False,
-        lanes_forward=lf, lanes_backward=lb, lane_width_ft=lane_w, one_way=one_way, divided=bool(median) or tags.get("dual_carriageway") == "yes",
+        lanes_forward=lf, lanes_backward=lb, lane_width_ft=lane_w, center_turn_lane=center and not median, one_way=one_way, divided=bool(median) or tags.get("dual_carriageway") == "yes",
         median=median, road_class=rclass,
         has_bike_lane=any(k.startswith("cycleway") and v in ("lane", "track") for k, v in tags.items()),
         has_sidewalk=tags.get("sidewalk", "both") != "no",

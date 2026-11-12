@@ -7,6 +7,10 @@ applications, with Arizona practice from the ADOT TTC Design Guidelines:
 - ``shoulder``                 shoulder / parking-lane work (TA-6 style)
 - ``two_lane_flagger``         one lane closed on a two-lane road, flaggers (TA-10 style)
 - ``lane_closure_multilane``   one lane closed where the direction has 2+ lanes (TA-30/33 style)
+- ``lane_shift_twltl``         one lane each way plus a center turn lane: the closed direction shifts
+                               into the center turn lane (shifting taper, MUTCD 6C), no flaggers
+
+Roads may have up to 3 lanes each way and a two-way center turn lane (e.g. 3 + 1 + 3).
 """
 
 from __future__ import annotations
@@ -14,7 +18,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-from ..geo import Centerline
+from ..geo import Centerline, center_lane_width
 from ..models import (
     ComplianceIssue,
     Device,
@@ -109,6 +113,14 @@ class Geometry:
 
 
 def _geometry(road: RoadContext, details: ProjectDetails, cl: Centerline) -> Geometry:
+    g = _geometry_raw(road, details, cl)
+    if not road.one_way and abs(g.inner_line) < 1e-9:
+        # the lane line at the median / center turn lane edge: keep its side so it is pushed out with the lanes
+        g.inner_line = g.sgn * 1e-3
+    return g
+
+
+def _geometry_raw(road: RoadContext, details: ProjectDetails, cl: Centerline) -> Geometry:
     w = road.lane_width_ft
     if road.one_way:
         n = road.lanes_forward + road.lanes_backward
@@ -133,6 +145,8 @@ def choose_template(road: RoadContext, details: ProjectDetails, g: Geometry) -> 
         return "shoulder"
     if g.lanes_affected_dir >= 2:
         return "lane_closure_multilane"
+    if center_lane_width(road):
+        return "lane_shift_twltl"  # traffic moves into the center turn lane instead of flagging
     return "two_lane_flagger"
 
 
@@ -171,6 +185,10 @@ def generate(
         taper_w = g.lane_w
         taper = merging_taper_ft(taper_w, S)
         taper_type = "merging (L)"
+    elif template == "lane_shift_twltl":
+        taper_w = g.lane_w
+        taper = 0.5 * merging_taper_ft(taper_w, S)  # MUTCD Table 6C-3: shifting taper at least 0.5 L
+        taper_type = "shifting (0.5 L)"
     else:
         taper_w = g.lane_w
         taper = 50.0 if S <= 30 else 100.0
@@ -221,7 +239,7 @@ def generate(
     res_lo, res_hi = sorted((up(buf + taper), dn(down_taper)))  # taper start to downstream taper end
     signal_dist, signal_in_zone, near_ints = _intersection_facts(road, adv_lo, adv_hi, res_lo, res_hi, min(ws, we), max(ws, we))
     lane_closure = template != "shoulder"
-    through_remaining = (g.lanes_affected_dir - 1) if template == "lane_closure_multilane" else (1 if template == "two_lane_flagger" else g.lanes_affected_dir)
+    through_remaining = (g.lanes_affected_dir - 1) if template == "lane_closure_multilane" else (1 if template in ("two_lane_flagger", "lane_shift_twltl") else g.lanes_affected_dir)
     facts = Facts(
         road_class=road.road_class.value,
         speed_mph=S,
@@ -235,7 +253,7 @@ def generate(
         duration_days=timeline.duration_days,
         flagging=template == "two_lane_flagger",
         bike_lane_closed=road.has_bike_lane and details.side == "right" and not road.one_way,
-        capacity_reduction_pct=(100.0 / g.lanes_affected_dir) if lane_closure and g.lanes_affected_dir else 0.0,
+        capacity_reduction_pct=(100.0 / g.lanes_affected_dir) if lane_closure and g.lanes_affected_dir and template != "lane_shift_twltl" else 0.0,
         during_peak=timeline.during_peak,
     )
     reqs: list[Requirement] = evaluate(rules, facts)
@@ -276,6 +294,16 @@ def generate(
         t = k / (n_down - 1)
         add(chan, dn(down_taper * t), taper_to + (taper_from - taper_to) * t, label="Downstream taper", group="termination", direction=affected_dir, lights=chan_lights)
 
+    if template == "lane_shift_twltl":
+        # Shifted traffic uses the center turn lane: devices on its far edge keep it apart from
+        # opposing traffic (and stop left turns into the work zone) from taper start to taper end.
+        sep_off = -g.sgn * 0.01  # the opposing side of the center lane
+        sep_len = taper + buf + work_len + down_taper
+        n_sep = max(2, int(math.ceil(sep_len / tangent_sp)))
+        for k in range(n_sep + 1):
+            add(chan, up(buf + taper) + d * sep_len * k / n_sep, sep_off, label="Center lane separation", group="centerline",
+                direction=affected_dir, lights=chan_lights)
+
     # --- arrow board ----------------------------------------------------------------------------
     needs_arrow = template == "lane_closure_multilane" and ("arrow" in device_text or S >= 45 or road.road_class.value in ("arterial", "highway"))
     if template != "two_lane_flagger" and "arrow" in device_text:
@@ -290,6 +318,10 @@ def generate(
     lr = "R" if g.sgn == 1 else "L"
     if template == "lane_closure_multilane":
         seq = [(A, "W4-2" + lr, "LANE ENDS"), (A + B, "W20-5" + lr, f"{'RIGHT' if lr == 'R' else 'LEFT'} LANE CLOSED AHEAD"), (A + B + C, "W20-1", "ROAD WORK AHEAD")]
+    elif template == "lane_shift_twltl":
+        shift = "L" if g.sgn == 1 else "R"
+        seq = [(A, "W1-4" + shift, "LANE SHIFT (reverse curve)"), (A + B, "W20-5" + lr, f"{'RIGHT' if lr == 'R' else 'LEFT'} LANE CLOSED AHEAD"),
+               (A + B + C, "W20-1", "ROAD WORK AHEAD")]
     elif template == "two_lane_flagger":
         seq = [(A, "W20-7", "FLAGGER (symbol)"), (A + B, "W20-4", "ONE LANE ROAD AHEAD"), (A + B + C, "W20-1", "ROAD WORK AHEAD")]
     else:
@@ -320,7 +352,7 @@ def generate(
         for dist, code, label in [(A, "W20-7", "FLAGGER (symbol)"), (A + B, "W20-4", "ONE LANE ROAD AHEAD"), (A + B + C, "W20-1", "ROAD WORK AHEAD")]:
             add(DeviceType.sign, dn(u_op + dist), opp_sign_off, code=code, label=label, group="advance_warning_opposing", direction=opposing_dir, lights=sign_lights)
         add(DeviceType.sign, up(u0 + 100), opp_sign_off, code=end_code, label="END ROAD WORK", group="termination", direction=opposing_dir)
-    elif not road.one_way and template == "lane_closure_multilane" and g.lanes_opposing:
+    elif not road.one_way and template in ("lane_closure_multilane", "lane_shift_twltl") and g.lanes_opposing:
         add(DeviceType.sign, dn(down_taper + A + B + C), opp_sign_off, code="W20-1", label="ROAD WORK AHEAD", group="advance_warning_opposing", direction=opposing_dir, lights=sign_lights)
         add(DeviceType.sign, up(u0 + 100), opp_sign_off, code=end_code, label="END ROAD WORK", group="termination", direction=opposing_dir)
 
@@ -381,13 +413,18 @@ def generate(
         road_left = -road_right
     else:
         road_left, road_right = -road.lanes_backward * g.lane_w, road.lanes_forward * g.lane_w
-    road_label = f"{road.name or 'Roadway'} ({road.lanes_forward}+{road.lanes_backward} lanes{', divided' if cl.median else ''})"
-    if cl.median and not road.one_way:
+    twltl = center_lane_width(road)
+    has_median = any(m.width_ft > 0 for m in road.median)
+    road_label = f"{road.name or 'Roadway'} ({lane_config(road)})"
+    if has_median and not road.one_way:
         # two carriageways with the median between them (tiny offsets pick up the median push-out)
         roadway = [Zone(kind="roadway", polygon=cl.strip(r_lo, r_hi, road_left, -0.001, 24), start_station_ft=r_lo, end_station_ft=r_hi, label=road_label),
                    Zone(kind="roadway", polygon=cl.strip(r_lo, r_hi, 0.001, road_right, 24), start_station_ft=r_lo, end_station_ft=r_hi, label=road_label)]
     else:
         roadway = [Zone(kind="roadway", polygon=cl.strip(r_lo, r_hi, road_left, road_right, 16), start_station_ft=r_lo, end_station_ft=r_hi, label=road_label)]
+    if twltl and not has_median:
+        # the center turn lane itself (between the two directions' inside lane lines)
+        roadway.append(Zone(kind="center_lane", polygon=cl.strip(r_lo, r_hi, -0.001, 0.001, 16), start_station_ft=r_lo, end_station_ft=r_hi, label="Two-way center turn lane"))
     zones = roadway + [
         Zone(kind="work_area", polygon=cl.strip(min(ws, we), max(ws, we), work_lo, work_hi), start_station_ft=min(ws, we), end_station_ft=max(ws, we), label=f"Work area {work_len:.0f} ft"),
         Zone(kind="buffer", polygon=cl.strip(min(ws, up(buf)), max(ws, up(buf)), work_lo, work_hi, 4), start_station_ft=min(ws, up(buf)), end_station_ft=max(ws, up(buf)), label=f"Buffer {buf:.0f} ft"),
@@ -406,6 +443,23 @@ def generate(
     plan = TcpPlan(template=template, devices=devices, zones=zones, dimensions=dims, requirements=reqs, issues=issues, night=night)
     plan.requirements.extend(_static_requirements(rules, template, road, details))
     return plan
+
+
+def lane_config(road: RoadContext) -> str:
+    """Plain description of the lane layout, e.g. '7-lane road: 3 lanes each way + center turn lane'."""
+    if road.one_way:
+        n = road.lanes_forward + road.lanes_backward
+        return f"one-way, {n} lane{'s' if n != 1 else ''}"
+    f, b = road.lanes_forward, road.lanes_backward
+    twltl = bool(center_lane_width(road))
+    total = f + b + (1 if twltl else 0)
+    each = f"{f} lane{'s' if f != 1 else ''} each way" if f == b else f"{f} + {b} lanes"
+    parts = [f"{total}-lane road: {each}"]
+    if twltl:
+        parts.append("+ center turn lane")
+    if any(m.width_ft > 0 for m in road.median):
+        parts.append("(divided)")
+    return " ".join(parts)
 
 
 def _intersection_facts(road: RoadContext, zone_lo, zone_hi, restricted_lo, restricted_hi, work_lo, work_hi):

@@ -102,8 +102,9 @@
           <label class="check"><input type="checkbox" name="speed_confirmed"> Speed confirmed in the field</label>
           <label>Road class <select name="road_class"><option>local</option><option>collector</option><option>arterial</option><option>highway</option></select></label>
           <label>Lane width (ft) <input name="lane_width_ft" type="number" min="9" max="16"></label>
-          <label>Lanes in drawn direction <input name="lanes_forward" type="number" min="0" max="5"></label>
+          <label>Lanes in drawn direction <input name="lanes_forward" type="number" min="0" max="5" title="Through lanes, up to 3 each way on two-way roads"></label>
           <label>Lanes opposite <input name="lanes_backward" type="number" min="0" max="5"></label>
+          <label class="check"><input type="checkbox" name="center_turn_lane"> Center turn lane (two-way left turn)</label>
           <label class="check"><input type="checkbox" name="one_way"> One-way</label>
           <label class="check"><input type="checkbox" name="has_bike_lane"> Bike lane</label>
           <label class="check"><input type="checkbox" name="has_sidewalk"> Sidewalk</label>
